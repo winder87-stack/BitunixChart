@@ -1,0 +1,5 @@
+# Placeholder for icon.png
+# To generate proper icons, you can use:
+# 1. Convert the icon.svg to PNG using an online tool or ImageMagick
+# 2. Create multiple sizes: 16x16, 32x32, 48x48, 64x64, 128x128, 256x256, 512x512
+# 3. For now, the app will work without the PNG icon

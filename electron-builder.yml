@@ -1,0 +1,72 @@
+appId: com.bitunix.charts
+productName: Bitunix Charts
+copyright: Copyright © 2024
+
+directories:
+  buildResources: assets
+  output: dist
+
+files:
+  - dist/**/*
+  - package.json
+
+extraResources:
+  - from: assets/icons
+    to: icons
+    filter:
+      - "**/*"
+
+linux:
+  target:
+    - target: deb
+      arch: [x64, arm64]
+    - target: AppImage
+      arch: [x64, arm64]
+  category: Finance
+  icon: assets/icons
+  desktop:
+    Name: Bitunix Charts
+    Comment: Cryptocurrency charting application
+    Categories: Finance;Office;
+    Keywords: crypto;trading;charts;bitcoin;
+  maintainer: Bitunix Charts <support@bitunix.com>
+
+deb:
+  depends:
+    - libgtk-3-0
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0
+    - libuuid1
+  afterInstall: scripts/postinst.sh
+
+mac:
+  target: [dmg, zip]
+  icon: assets/icons/icon.icns
+  category: public.app-category.finance
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+
+win:
+  target: [nsis, portable]
+  icon: assets/icons/icon.ico
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Bitunix Charts
+
+appImage:
+  license: LICENSE
+  category: Finance
+
+publish: null

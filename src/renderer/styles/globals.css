@@ -1,0 +1,88 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+ 
+@layer base {
+  :root {
+    /* TradingView Dark Theme Colors */
+    --background: 224 29% 10%; /* #131722 */
+    --foreground: 220 12% 84%; /* #d1d4dc */
+    --surface: 224 20% 15%; /* #1e222d */
+ 
+    --card: 224 20% 15%; /* #1e222d */
+    --card-foreground: 220 12% 84%; /* #d1d4dc */
+ 
+    --popover: 224 20% 15%; /* #1e222d */
+    --popover-foreground: 220 12% 84%; /* #d1d4dc */
+ 
+    --primary: 224 100% 58%; /* #2962ff */
+    --primary-foreground: 0 0% 100%;
+ 
+    --secondary: 224 15% 19%; /* #2a2e39 (border color used as secondary bg) */
+    --secondary-foreground: 220 12% 84%;
+ 
+    --muted: 224 20% 15%; /* surface */
+    --muted-foreground: 227 6% 50%; /* #787b86 */
+ 
+    --accent: 224 15% 19%; /* border/hover */
+    --accent-foreground: 220 12% 84%;
+ 
+    --destructive: 359 86% 63%; /* #ef5350 */
+    --destructive-foreground: 0 0% 100%;
+ 
+    --border: 224 15% 19%; /* #2a2e39 */
+    --input: 224 15% 19%; /* #2a2e39 */
+    --ring: 224 100% 58%; /* #2962ff */
+ 
+    --radius: 0.5rem;
+
+    /* Custom Semantic Colors */
+    --success: 174 48% 43%; /* #26a69a */
+    --warning: 34 93% 54%; /* #f7931a */
+    --danger: 359 86% 63%; /* #ef5350 */
+    
+    --color-up: #26a69a;
+    --color-down: #ef5350;
+  }
+ 
+  .dark {
+    /* Same as root for now as we are dark-first */
+    --background: 224 29% 10%;
+    --foreground: 220 12% 84%;
+    /* ... repeat if needed for light mode switching, but sticking to dark for now */
+  }
+}
+ 
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--secondary)) transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-secondary rounded-full;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/50;
+  }
+}
