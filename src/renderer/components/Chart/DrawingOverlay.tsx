@@ -37,6 +37,10 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+  const [hoveredDrawingId, setHoveredDrawingId] = useState<string | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
+  const [initialData, setInitialData] = useState<any>(null);
 
   const symbol = useChartStore(state => state.symbol);
   const activeTool = useDrawingStore(state => state.activeTool);
@@ -51,6 +55,9 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
     cancelCreation,
     clearSelection,
     removeDrawing,
+    updateDrawingData,
+    selectDrawing,
+    getDrawing,
   } = useDrawingStore();
 
   const visibleDrawings = getVisibleDrawings(symbol);
@@ -80,6 +87,91 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
     },
     [chart, series]
   );
+
+  // Helper: Calculate distance from point to line segment
+  // Necessary for trendline hit testing math
+  const getDistanceToLine = (x: number, y: number, x1: number, y1: number, x2: number, y2: number) => {
+    const A = x - x1;
+    const B = y - y1;
+    const C = x2 - x1;
+    const D = y2 - y1;
+
+    const dot = A * C + B * D;
+    const len_sq = C * C + D * D;
+    let param = -1;
+    if (len_sq !== 0) // in case of 0 length line
+        param = dot / len_sq;
+
+    let xx, yy;
+
+    if (param < 0) {
+      xx = x1;
+      yy = y1;
+    } else if (param > 1) {
+      xx = x2;
+      yy = y2;
+    } else {
+      xx = x1 + param * C;
+      yy = y1 + param * D;
+    }
+
+    const dx = x - xx;
+    const dy = y - yy;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
+  const hitTest = useCallback((x: number, y: number): string | null => {
+    if (!chart || !series) return null;
+
+    // Check in reverse order (topmost first)
+    // Necessary to select the drawing drawn last (on top)
+    for (let i = visibleDrawings.length - 1; i >= 0; i--) {
+      const drawing = visibleDrawings[i];
+      const threshold = 10; // Pixel threshold
+
+      if (drawing.data.type === 'horizontalLine') {
+        const lineY = series.priceToCoordinate(drawing.data.price);
+        if (lineY !== null && Math.abs(y - lineY) < threshold) {
+          return drawing.id;
+        }
+      } else if (drawing.data.type === 'trendline') {
+        const start = chartToPixel(drawing.data.startPoint);
+        const end = chartToPixel(drawing.data.endPoint);
+        if (start && end) {
+          const dist = getDistanceToLine(x, y, start.x, start.y, end.x, end.y);
+          if (dist < threshold) return drawing.id;
+        }
+      } else if (drawing.data.type === 'fibonacciRetracement') {
+        // Hit test main line
+        const start = chartToPixel(drawing.data.startPoint);
+        const end = chartToPixel(drawing.data.endPoint);
+        if (start && end) {
+          const dist = getDistanceToLine(x, y, start.x, start.y, end.x, end.y);
+          if (dist < threshold) return drawing.id;
+        }
+      } else if (drawing.data.type === 'rectangle') {
+        const p1 = chartToPixel(drawing.data.topLeft);
+        const p2 = chartToPixel(drawing.data.bottomRight);
+        if (p1 && p2) {
+          const minX = Math.min(p1.x, p2.x);
+          const maxX = Math.max(p1.x, p2.x);
+          const minY = Math.min(p1.y, p2.y);
+          const maxY = Math.max(p1.y, p2.y);
+          
+          // Check borders
+          if (
+            (Math.abs(x - minX) < threshold && y >= minY && y <= maxY) ||
+            (Math.abs(x - maxX) < threshold && y >= minY && y <= maxY) ||
+            (Math.abs(y - minY) < threshold && x >= minX && x <= maxX) ||
+            (Math.abs(y - maxY) < threshold && x >= minX && x <= maxX)
+          ) {
+            return drawing.id;
+          }
+        }
+      }
+    }
+    return null;
+  }, [visibleDrawings, chart, series, chartToPixel]);
 
   const applyLineStyle = useCallback(
     (ctx: CanvasRenderingContext2D, style: DrawingStyle) => {
@@ -388,6 +480,39 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
     }
   }, [symbol, creatingDrawing, cancelCreation]);
 
+  // Handle global mouse move for hover detection
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      if (isDrawingMode || draggingId) return;
+
+      const rect = container.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      const hitId = hitTest(x, y);
+      setHoveredDrawingId(hitId);
+    };
+
+    const handleGlobalMouseUp = () => {
+      if (draggingId) {
+        setDraggingId(null);
+        setDragStart(null);
+        setInitialData(null);
+      }
+    };
+
+    container.addEventListener('mousemove', handleGlobalMouseMove);
+    window.addEventListener('mouseup', handleGlobalMouseUp);
+
+    return () => {
+      container.removeEventListener('mousemove', handleGlobalMouseMove);
+      window.removeEventListener('mouseup', handleGlobalMouseUp);
+    };
+  }, [containerRef, isDrawingMode, draggingId, hitTest]);
+
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
       if (!chart || !series) return;
@@ -412,14 +537,26 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
         } else {
           const definition = DRAWING_DEFINITIONS[creatingDrawing.toolType];
           const store = useDrawingStore.getState();
-          store.creationPoints.push(point);
+          store.addCreationPoint(point);
 
-          if (store.creationPoints.length >= definition.requiredClicks) {
+          if (store.creationPoints.length + 1 >= definition.requiredClicks) {
             completeCreation();
           }
         }
       } else {
-        clearSelection();
+        const hitId = hitTest(x, y);
+        
+        if (hitId) {
+          selectDrawing(hitId);
+          setDraggingId(hitId);
+          setDragStart({ x, y });
+          const drawing = getDrawing(hitId);
+          if (drawing) {
+            setInitialData(drawing.data);
+          }
+        } else {
+          clearSelection();
+        }
       }
     },
     [
@@ -432,25 +569,70 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
       completeCreation,
       clearSelection,
       pixelToChart,
+      hitTest,
+      selectDrawing,
+      getDrawing
     ]
   );
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
-      if (!creatingDrawing || !chart || !series) return;
-
       const rect = canvasRef.current?.getBoundingClientRect();
-      if (!rect) return;
+      if (!rect || !chart || !series) return;
 
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       const point = pixelToChart(x, y);
 
-      if (point) {
+      if (creatingDrawing && point) {
         updateCreationPreview(point);
+      } else if (draggingId && dragStart && initialData && point) {
+        // Handle dragging
+        const drawing = getDrawing(draggingId);
+        if (!drawing) return;
+
+        if (drawing.data.type === 'horizontalLine') {
+          // Horizontal line: just update price
+          updateDrawingData(draggingId, { price: point.price });
+        } else if (drawing.data.type === 'trendline') {
+          // Trendline: delta update
+          const startChart = pixelToChart(dragStart.x, dragStart.y);
+          if (startChart) {
+            const priceDelta = point.price - startChart.price;
+            const timeDelta = point.time - startChart.time;
+            
+            const newStart = {
+              price: initialData.startPoint.price + priceDelta,
+              time: initialData.startPoint.time + timeDelta,
+            };
+            const newEnd = {
+              price: initialData.endPoint.price + priceDelta,
+              time: initialData.endPoint.time + timeDelta,
+            };
+            
+            updateDrawingData(draggingId, { startPoint: newStart, endPoint: newEnd });
+          }
+        } else if (drawing.data.type === 'rectangle') {
+           const startChart = pixelToChart(dragStart.x, dragStart.y);
+           if (startChart) {
+             const priceDelta = point.price - startChart.price;
+             const timeDelta = point.time - startChart.time;
+             
+             const newTopLeft = {
+               price: initialData.topLeft.price + priceDelta,
+               time: initialData.topLeft.time + timeDelta,
+             };
+             const newBottomRight = {
+               price: initialData.bottomRight.price + priceDelta,
+               time: initialData.bottomRight.time + timeDelta,
+             };
+             
+             updateDrawingData(draggingId, { topLeft: newTopLeft, bottomRight: newBottomRight });
+           }
+        }
       }
     },
-    [creatingDrawing, chart, series, updateCreationPreview, pixelToChart]
+    [creatingDrawing, draggingId, dragStart, initialData, chart, series, updateCreationPreview, pixelToChart, getDrawing, updateDrawingData]
   );
 
   const handleKeyDown = useCallback(
@@ -478,15 +660,15 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
-  const cursorStyle = isDrawingMode ? 'crosshair' : 'default';
+  const cursorStyle = isDrawingMode ? 'crosshair' : (hoveredDrawingId || draggingId ? 'move' : 'default');
 
   return (
     <canvas
       ref={canvasRef}
-      className="absolute inset-0 pointer-events-auto z-10"
+      className="absolute inset-0 z-10"
       style={{
         cursor: cursorStyle,
-        pointerEvents: isDrawingMode ? 'auto' : 'none',
+        pointerEvents: (isDrawingMode || hoveredDrawingId || draggingId) ? 'auto' : 'none',
       }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}

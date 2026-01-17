@@ -541,12 +541,14 @@ export const IndicatorPane: React.FC<IndicatorPaneProps> = ({
   useEffect(() => {
     initializeChart();
     
+    const seriesMap = seriesMapRef.current;
+    
     return () => {
       if (chartRef.current) {
         chartRef.current.remove();
         chartRef.current = null;
       }
-      seriesMapRef.current.clear();
+      seriesMap.clear();
     };
   }, [initializeChart]);
   

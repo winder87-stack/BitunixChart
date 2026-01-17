@@ -63,6 +63,15 @@ export default defineConfig({
   build: {
     outDir: 'dist/renderer',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom'],
+          'vendor-charts': ['lightweight-charts'],
+          'vendor-ui': ['lucide-react', 'clsx', 'tailwind-merge', '@radix-ui/react-slot'],
+        },
+      },
+    },
   },
   server: {
     port: 5173,

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://raw.githubusercontent.com/code-yeongyu/oh-my-opencode/master/assets/oh-my-opencode.schema.json",
+  "google_auth": true,
+  "agents": {
+    "frontend-ui-ux-engineer": {
+      "permission": {
+        "edit": "allow",
+        "bash": {
+          "npm": "allow",
+          "npx": "allow"
+        }
+      }
+    },
+    "explore": {
+      "permission": {
+        "edit": "deny",
+        "bash": "deny"
+      }
+    }
+  },
+  "disabled_hooks": []
+}

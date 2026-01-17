@@ -102,7 +102,7 @@ export function useChartData(symbol: string, timeframe: Timeframe): UseChartData
     } finally {
       isLoadingHistoryRef.current = false;
     }
-  }, [klines, symbol, timeframe]);
+  }, [klines]);
   
   // ==========================================================================
   // Manual Refetch

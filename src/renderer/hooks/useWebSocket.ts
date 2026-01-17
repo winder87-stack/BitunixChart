@@ -95,18 +95,20 @@ export function useWebSocket(): UseWebSocketReturn {
       bitunixWS.connect().catch(console.error);
     }
     
+    const subscriptions = activeSubscriptions.current;
+    
     // Cleanup on unmount
     return () => {
       bitunixWS.off('status', handleStatusChange);
       // bitunixWS.off('message', handleMessage);
       
       // Unsubscribe from all subscriptions created by this hook
-      activeSubscriptions.current.forEach(id => {
+      subscriptions.forEach(id => {
         bitunixWS.unsubscribe(id).catch(console.error);
       });
-      activeSubscriptions.current.clear();
+      subscriptions.clear();
     };
-  }, []);
+  }, [status]);
   
   // ==========================================================================
   // Subscription Wrappers

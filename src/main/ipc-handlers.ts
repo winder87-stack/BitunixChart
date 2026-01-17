@@ -47,11 +47,19 @@ const CONFIG = {
   WS_PING_INTERVAL: 30000,
   WS_RECONNECT_DELAY: 5000,
   WS_MAX_RECONNECT_ATTEMPTS: 5,
+  WS_THROTTLE_MS: 250, // 4 updates/sec for UI performance
 } as const;
 
 // =============================================================================
 // WebSocket Manager
 // =============================================================================
+
+interface KlineUpdateData {
+  symbol: string;
+  interval: TimeInterval;
+  kline: KlineData;
+  isFinal: boolean;
+}
 
 class WebSocketManager {
   private ws: WebSocket | null = null;
@@ -60,6 +68,9 @@ class WebSocketManager {
   private pingInterval: NodeJS.Timeout | null = null;
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private reconnectAttempts = 0;
+  private cachedMainWindow: BrowserWindow | null = null;
+  private updateBuffer: Map<string, KlineUpdateData> = new Map();
+  private throttleInterval: NodeJS.Timeout | null = null;
 
   /**
    * Map internal interval to Bitunix API interval
@@ -112,12 +123,15 @@ class WebSocketManager {
     return map[interval] || min;
   }
 
-  /**
-   * Get the main window for sending IPC messages
-   */
   private getMainWindow(): BrowserWindow | null {
-    const windows = BrowserWindow.getAllWindows();
-    return windows.length > 0 ? windows[0] : null;
+    if (this.cachedMainWindow?.isDestroyed()) {
+      this.cachedMainWindow = null;
+    }
+    if (!this.cachedMainWindow) {
+      const windows = BrowserWindow.getAllWindows();
+      this.cachedMainWindow = windows.length > 0 ? windows[0] : null;
+    }
+    return this.cachedMainWindow;
   }
 
   /**
@@ -141,19 +155,39 @@ class WebSocketManager {
     }
   }
 
-  /**
-   * Send kline update to renderer
-   */
-  private sendKlineUpdate(data: {
-    symbol: string;
-    interval: TimeInterval;
-    kline: KlineData;
-    isFinal: boolean;
-  }): void {
+  private bufferKlineUpdate(data: KlineUpdateData): void {
+    this.updateBuffer.set(data.symbol, data);
+    this.startThrottledFlush();
+  }
+
+  private startThrottledFlush(): void {
+    if (this.throttleInterval) return;
+    this.throttleInterval = setInterval(() => {
+      this.flushUpdateBuffer();
+    }, CONFIG.WS_THROTTLE_MS);
+  }
+
+  private flushUpdateBuffer(): void {
+    if (this.updateBuffer.size === 0) return;
     const mainWindow = this.getMainWindow();
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('bitunix:kline-update', data);
+      this.updateBuffer.forEach((update) => {
+        mainWindow.webContents.send('bitunix:kline-update', update);
+      });
     }
+    this.updateBuffer.clear();
+  }
+
+  private stopThrottledFlush(): void {
+    if (this.throttleInterval) {
+      clearInterval(this.throttleInterval);
+      this.throttleInterval = null;
+    }
+    this.updateBuffer.clear();
+  }
+
+  private sendKlineUpdate(data: KlineUpdateData): void {
+    this.bufferKlineUpdate(data);
   }
 
   /**
@@ -426,11 +460,9 @@ class WebSocketManager {
     return { success: true };
   }
 
-  /**
-   * Disconnect from WebSocket server
-   */
   disconnect(): void {
     this.stopPing();
+    this.stopThrottledFlush();
     
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
@@ -455,10 +487,8 @@ class WebSocketManager {
     return this.status;
   }
 
-  /**
-   * Cleanup all resources
-   */
   cleanup(): void {
+    this.stopThrottledFlush();
     this.unsubscribeAll();
     this.disconnect();
   }

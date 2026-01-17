@@ -8,9 +8,8 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { useIndicatorStore } from '../stores/indicatorStore';
 import type { ParsedKline } from '../types/bitunix';
-// IndicatorConfig is used in the worker payload type implicitly via activeIndicators
-// but we don't use the type explicitly in the hook body, so we can keep it for clarity or remove
-// import type { IndicatorConfig } from '../types/indicators';
+import type { IndicatorResult } from '../types/indicators';
+import type { WorkerResponse } from '../types/worker';
 
 // Import worker using Vite's worker syntax
 import IndicatorWorker from '../workers/indicatorWorker?worker';
@@ -45,18 +44,17 @@ export function useIndicators(klines: ParsedKline[]): UseIndicatorsReturn {
     const worker = new IndicatorWorker();
     workerRef.current = worker;
     
-    worker.onmessage = (event) => {
+    worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
       const { type, payload } = event.data;
       
       if (type === 'result') {
         const { results } = payload;
         
         if (results) {
-          // Batch updates to store
-          results.forEach((res: any) => {
+          results.forEach((res: { id: string; data?: IndicatorResult[]; error?: string }) => {
             if (res.error) {
               setError(res.id, res.error);
-            } else {
+            } else if (res.data) {
               setIndicatorResults(res.id, res.data);
               setError(res.id, null);
             }

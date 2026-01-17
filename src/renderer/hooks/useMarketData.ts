@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 // bitunixApi import removed as we use window.bitunix directly
-import type { BitunixTicker24h, SymbolInfo } from '../types/bitunix';
+import type { BitunixTicker24h, SymbolInfo, BitunixSymbol } from '../types/bitunix';
 import { extractSymbolInfo } from '../types/bitunix';
 
 interface MarketData {
@@ -44,7 +44,7 @@ export function useMarketData() {
         throw new Error('Failed to fetch market data');
       }
 
-      const rawSymbols = symbolsResponse.data as any[];
+      const rawSymbols = symbolsResponse.data as unknown as BitunixSymbol[];
       const rawTickers = tickersResponse.data as BitunixTicker24h[];
 
       // Process symbols

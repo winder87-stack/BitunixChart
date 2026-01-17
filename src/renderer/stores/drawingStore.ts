@@ -42,6 +42,7 @@ interface DrawingActions {
 
   startCreation: (symbol: string, point: ChartPoint) => void;
   updateCreationPreview: (point: ChartPoint) => void;
+  addCreationPoint: (point: ChartPoint) => void;
   completeCreation: () => string | null;
   cancelCreation: () => void;
 
@@ -247,6 +248,12 @@ export const useDrawingStore = create<DrawingStore>()(
           } else if (data.type === 'rectangle') {
             data.bottomRight = point;
           }
+        });
+      },
+
+      addCreationPoint: (point) => {
+        set(draft => {
+          draft.creationPoints.push(point);
         });
       },
 

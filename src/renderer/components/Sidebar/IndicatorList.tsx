@@ -127,11 +127,9 @@ export const IndicatorList: React.FC = () => {
     }
   };
 
-  // Group definitions for the add menu
-  const categories: IndicatorCategory[] = ['trend', 'momentum', 'volatility', 'volume', 'custom'];
-
   // Filtered categories based on search
   const filteredCategories = useMemo(() => {
+    const categories: IndicatorCategory[] = ['trend', 'momentum', 'volatility', 'volume', 'custom'];
     if (!searchQuery.trim()) return categories;
 
     const lowerQuery = searchQuery.toLowerCase();
@@ -142,7 +140,7 @@ export const IndicatorList: React.FC = () => {
         ind.shortName.toLowerCase().includes(lowerQuery)
       );
     });
-  }, [searchQuery, categories]);
+  }, [searchQuery]);
 
   // Filter indicators within categories
   const getFilteredIndicators = (cat: IndicatorCategory) => {

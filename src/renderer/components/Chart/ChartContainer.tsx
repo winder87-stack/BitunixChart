@@ -637,20 +637,21 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
   useEffect(() => {
     initializeChart();
     
+    const separatePanes = separatePanesRef.current;
+    const overlaySeries = overlaySeriesRef.current;
+    
     return () => {
-      // Cleanup main chart
       if (chartRef.current) {
         chartRef.current.remove();
         chartRef.current = null;
       }
       
-      // Cleanup separate panes
-      separatePanesRef.current.forEach(pane => {
+      separatePanes.forEach(pane => {
         pane.chart.remove();
         pane.container.remove();
       });
-      separatePanesRef.current.clear();
-      overlaySeriesRef.current.clear();
+      separatePanes.clear();
+      overlaySeries.clear();
     };
   }, [initializeChart]);
   

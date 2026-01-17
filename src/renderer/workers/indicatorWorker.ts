@@ -5,34 +5,8 @@
  * Receives kline data and indicator configurations, returns calculated results.
  */
 
-import { calculateIndicator } from '../services/indicators/calculations';
-import type { ParsedKline } from '../types/bitunix';
-import type { IndicatorConfig } from '../types/indicators';
-
-// =============================================================================
-// Types
-// =============================================================================
-
-export interface WorkerMessage {
-  id: string;
-  type: 'calculate';
-  payload: {
-    indicators: IndicatorConfig[];
-    klines: ParsedKline[];
-  };
-}
-
-export interface WorkerResponse {
-  id: string;
-  type: 'result' | 'error';
-  payload: {
-    results?: Array<{
-      id: string;
-      data: any[];
-    }>;
-    error?: string;
-  };
-}
+import { calculateIndicator, CalculationParams } from '../services/indicators/calculations';
+import type { WorkerMessage } from '../types/worker';
 
 // =============================================================================
 // Message Handler
@@ -59,7 +33,7 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
           const result = calculateIndicator(
             indicator.type,
             klines,
-            indicator.params as any
+            indicator.params as CalculationParams
           );
           
           return {

@@ -44,17 +44,33 @@ async function generateIcons() {
     .toFile(path.join(ICONS_DIR, 'icon.png'));
   console.log('  ✓ icon.png');
 
-  console.log('\n✅ Icon generation complete!');
-  console.log('\nGenerated files:');
-  console.log('  - icon.png (512x512)');
-  LINUX_SIZES.forEach(size => {
-    console.log(`  - ${size}x${size}.png`);
-  });
+  // Generate .icns and .ico using png2icons
+  try {
+    const png2icons = require('png2icons');
+    const mainIconBuffer = fs.readFileSync(path.join(ICONS_DIR, 'icon.png'));
+    
+    console.log('\nGenerating icon.icns...');
+    const icnsBuffer = png2icons.createICNS(mainIconBuffer, png2icons.BILINEAR, 0);
+    if (icnsBuffer) {
+      fs.writeFileSync(path.join(ICONS_DIR, 'icon.icns'), icnsBuffer);
+      console.log('  ✓ icon.icns');
+    } else {
+      console.error('  ✗ Failed to generate icon.icns');
+    }
 
-  console.log('\n⚠️  Note: For .ico and .icns files, use:');
-  console.log('  - Windows (.ico): https://icoconvert.com/');
-  console.log('  - macOS (.icns): iconutil or https://cloudconvert.com/');
-  console.log('\nOr install png-to-ico and png2icns packages for automation.');
+    console.log('\nGenerating icon.ico...');
+    const icoBuffer = png2icons.createICO(mainIconBuffer, png2icons.BILINEAR, 0, false);
+    if (icoBuffer) {
+      fs.writeFileSync(path.join(ICONS_DIR, 'icon.ico'), icoBuffer);
+      console.log('  ✓ icon.ico');
+    } else {
+      console.error('  ✗ Failed to generate icon.ico');
+    }
+  } catch (e) {
+    console.error('\n⚠️  Could not generate .icns/.ico (png2icons not installed?)', e.message);
+  }
+
+  console.log('\n✅ Icon generation complete!');
 }
 
 generateIcons().catch(err => {

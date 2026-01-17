@@ -653,13 +653,14 @@ export const ChartCanvas = forwardRef<ChartCanvasRef, ChartCanvasProps>((
   useEffect(() => {
     initializeChart();
     
+    const seriesMap = seriesMapRef.current;
+    
     return () => {
-      // Cleanup
       if (chartRef.current) {
         chartRef.current.remove();
         chartRef.current = null;
       }
-      seriesMapRef.current.clear();
+      seriesMap.clear();
       mainSeriesRef.current = null;
       isInitializedRef.current = false;
     };
