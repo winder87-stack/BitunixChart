@@ -9,24 +9,21 @@ import { TopBar } from './components/Header';
 import { Sidebar } from './components/Sidebar/Sidebar';
 import { ChartContainer } from './components/Chart';
 import { StatusBar } from './components/StatusBar/StatusBar';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { useChartStore } from './stores/chartStore';
 import { useIndicators } from './hooks/useIndicators';
-import { useWebSocket } from './hooks/useWebSocket';
 import { cn } from './lib/utils';
 import { TooltipProvider } from './components/ui/tooltip';
 
 const App: React.FC = () => {
   // Global state
-  const { klines, fetchKlines, subscribe } = useChartStore();
+  const { klines, fetchKlines, subscribe, isSubscribed } = useChartStore();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   
   // Initialize indicator worker
   useIndicators(klines);
   
-  // Initialize WebSocket connection
-  const { isConnected } = useWebSocket();
-  
-  // Initial data load
+  // Initial data load and subscription
   useEffect(() => {
     fetchKlines();
     subscribe();
@@ -61,16 +58,20 @@ const App: React.FC = () => {
     <TooltipProvider>
       <div className="flex flex-col h-screen w-screen bg-background text-text-primary overflow-hidden">
         {/* Top Header */}
-        <TopBar />
+        <ErrorBoundary fallbackTitle="Header Error">
+          <TopBar />
+        </ErrorBoundary>
         
         {/* Main Content Area */}
         <div className="flex-1 flex overflow-hidden relative">
           {/* Chart Area */}
           <div className="flex-1 flex flex-col min-w-0 relative">
-            <ChartContainer className="flex-1" />
+            <ErrorBoundary fallbackTitle="Chart Error">
+              <ChartContainer className="flex-1" />
+            </ErrorBoundary>
             
             {/* Overlay for connection issues */}
-            {!isConnected && (
+            {!isSubscribed && (
               <div className="absolute top-2 right-2 bg-destructive/80 text-destructive-foreground text-xs px-2 py-1 rounded shadow pointer-events-none z-50 animate-pulse">
                 Reconnecting...
               </div>
@@ -85,7 +86,9 @@ const App: React.FC = () => {
             )}
           >
             <div className="w-[300px] h-full">
-              <Sidebar />
+              <ErrorBoundary fallbackTitle="Sidebar Error">
+                <Sidebar />
+              </ErrorBoundary>
             </div>
           </div>
           
@@ -104,7 +107,9 @@ const App: React.FC = () => {
         </div>
         
         {/* Bottom Status Bar */}
-        <StatusBar />
+        <ErrorBoundary fallbackTitle="Status Bar Error">
+          <StatusBar />
+        </ErrorBoundary>
       </div>
     </TooltipProvider>
   );

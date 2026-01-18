@@ -11,6 +11,7 @@ import { useIndicatorStore } from '../../stores/indicatorStore';
 import { getIndicatorDefinition } from '../../services/indicators/definitions';
 import { IndicatorList } from './IndicatorList';
 import { IndicatorSettings } from './IndicatorSettings';
+import { ErrorBoundary } from '../ErrorBoundary';
 
 export const Sidebar: React.FC = () => {
   const { selectedIndicatorId, getIndicator, selectIndicator } = useIndicatorStore();
@@ -22,16 +23,22 @@ export const Sidebar: React.FC = () => {
   // Show settings if an indicator is selected and valid
   if (selectedIndicator && definition) {
     return (
-      <IndicatorSettings 
-        indicator={selectedIndicator} 
-        definition={definition} 
-        onClose={() => selectIndicator(null)} 
-      />
+      <ErrorBoundary fallbackTitle="Indicator Settings Error" onReset={() => selectIndicator(null)}>
+        <IndicatorSettings 
+          indicator={selectedIndicator} 
+          definition={definition} 
+          onClose={() => selectIndicator(null)} 
+        />
+      </ErrorBoundary>
     );
   }
 
   // Otherwise show the list
-  return <IndicatorList />;
+  return (
+    <ErrorBoundary fallbackTitle="Indicator List Error">
+      <IndicatorList />
+    </ErrorBoundary>
+  );
 };
 
 export default Sidebar;

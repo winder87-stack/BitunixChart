@@ -52,33 +52,26 @@ describe('TopBar', () => {
   });
 
   it('handles timeframe change', () => {
-    render(<TopBar />);
-    
-    // We spy on the store action indirectly or check state change
-    const originalSetTimeframe = useChartStore.getState().setTimeframe;
+    // Set up mocks BEFORE rendering so component captures the mocked functions
     const mockSetTimeframe = vi.fn();
     useChartStore.setState({ setTimeframe: mockSetTimeframe });
+    
+    render(<TopBar />);
 
     const button = screen.getByText('4H');
     fireEvent.click(button);
     expect(mockSetTimeframe).toHaveBeenCalledWith('4h');
-    
-    // Restore
-    useChartStore.setState({ setTimeframe: originalSetTimeframe });
   });
 
   it('handles chart type change', () => {
-    render(<TopBar />);
-    
-    const originalSetChartType = useChartStore.getState().setChartType;
     const mockSetChartType = vi.fn();
     useChartStore.setState({ setChartType: mockSetChartType });
+    
+    render(<TopBar />);
 
     const lineButton = screen.getByTitle('Line Chart');
     fireEvent.click(lineButton);
     expect(mockSetChartType).toHaveBeenCalledWith('line');
-    
-    useChartStore.setState({ setChartType: originalSetChartType });
   });
 
   it('displays connection status', () => {

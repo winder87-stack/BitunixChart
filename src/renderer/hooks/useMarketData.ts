@@ -47,14 +47,17 @@ export function useMarketData() {
       const rawSymbols = symbolsResponse.data as unknown as BitunixSymbol[];
       const rawTickers = tickersResponse.data as BitunixTicker24h[];
 
-      // Process symbols
+      if (!Array.isArray(rawSymbols)) {
+        throw new Error('Invalid symbols response: expected array');
+      }
       const symbols = rawSymbols.map(extractSymbolInfo);
       
-      // Process tickers map
       const tickers: Record<string, BitunixTicker24h> = {};
-      rawTickers.forEach(t => {
-        tickers[t.symbol] = t;
-      });
+      if (Array.isArray(rawTickers)) {
+        rawTickers.forEach(t => {
+          tickers[t.symbol] = t;
+        });
+      }
 
       setData({
         symbols,

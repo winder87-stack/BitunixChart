@@ -14,6 +14,7 @@ import { useMarketData } from '../../hooks/useMarketData';
 import { SymbolSearch } from '../Sidebar/SymbolSearch';
 import { PriceDisplay } from './PriceDisplay';
 import { DrawingToolbar } from './DrawingToolbar';
+import { ErrorBoundary } from '../ErrorBoundary';
 import { cn } from '../../lib/utils';
 import type { Timeframe } from '../../types/bitunix';
 
@@ -237,7 +238,9 @@ export const TopBar: React.FC = () => {
         </div>
         
         {/* Drawing Tools */}
-        <DrawingToolbar />
+        <ErrorBoundary fallbackTitle="Drawing Tools Error">
+          <DrawingToolbar />
+        </ErrorBoundary>
         
         <div className="w-px h-6 bg-border" />
         
