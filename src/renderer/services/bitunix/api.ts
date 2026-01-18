@@ -28,6 +28,12 @@ import {
   extractSymbolInfo 
 } from '../../types/bitunix';
 
+import {
+  validateSymbol,
+  validateTicker,
+  validateRawKlineArray
+} from './validators';
+
 // =============================================================================
 // Configuration
 // =============================================================================
@@ -447,14 +453,19 @@ export class BitunixAPI {
       // Extract simplified info
       const symbolInfos = filtered.map(extractSymbolInfo);
 
+      // Validate and filter
+      const validSymbolInfos = symbolInfos
+        .map(s => validateSymbol(s))
+        .filter((s): s is SymbolInfo => s !== null);
+
       // Sort alphabetically
-      symbolInfos.sort((a, b) => a.symbol.localeCompare(b.symbol));
+      validSymbolInfos.sort((a, b) => a.symbol.localeCompare(b.symbol));
 
       // Cache the results
-      this.setCache(cacheKey, symbolInfos, this.config.symbolsCacheTtl);
+      this.setCache(cacheKey, validSymbolInfos, this.config.symbolsCacheTtl);
 
-      logger.info(`Fetched ${symbolInfos.length} USDT trading pairs`);
-      return symbolInfos;
+      logger.info(`Fetched ${validSymbolInfos.length} USDT trading pairs`);
+      return validSymbolInfos;
     } catch (error) {
       logger.error('Failed to fetch symbols:', error);
       throw error;
@@ -486,7 +497,9 @@ export class BitunixAPI {
     const symbols = Array.isArray(data) ? data : data.symbols || [];
     const symbolInfos = symbols
       .filter((s: BitunixSymbol) => s.status === 'TRADING')
-      .map(extractSymbolInfo);
+      .map(extractSymbolInfo)
+      .map(s => validateSymbol(s))
+      .filter((s): s is SymbolInfo => s !== null);
 
     symbolInfos.sort((a, b) => a.symbol.localeCompare(b.symbol));
     this.setCache(cacheKey, symbolInfos, this.config.symbolsCacheTtl);
@@ -553,9 +566,15 @@ export class BitunixAPI {
         // Check if it's raw array format or already parsed
         if (Array.isArray(data[0])) {
           // Raw array format: [[timestamp, open, high, low, close, volume, ...], ...]
-          klines = (data as RawKlineArray[]).map(parseRawKline);
+          klines = (data as RawKlineArray[])
+            .map(k => validateRawKlineArray(k))
+            .filter((k): k is RawKlineArray => k !== null)
+            .map(parseRawKline);
         } else {
           // Already object format
+          // Assuming object format is valid if it came from IPC which might have done its own thing, 
+          // but strictly we should validate. Since we lack validateBitunixKline, we rely on types for now 
+          // or assume it's correct if not raw.
           klines = data as BitunixKline[];
         }
       } else {
@@ -628,7 +647,10 @@ export class BitunixAPI {
       
       if (Array.isArray(data) && data.length > 0) {
         if (Array.isArray(data[0])) {
-          klines = (data as RawKlineArray[]).map(parseRawKline);
+          klines = (data as RawKlineArray[])
+            .map(k => validateRawKlineArray(k))
+            .filter((k): k is RawKlineArray => k !== null)
+            .map(parseRawKline);
         } else {
           klines = data as BitunixKline[];
         }
@@ -730,7 +752,12 @@ export class BitunixAPI {
       // Cache for 10 seconds
       this.setCache(cacheKey, data, 10000);
 
-      return data;
+      const validTicker = validateTicker(data);
+      if (!validTicker) {
+        throw new ApiError('Invalid ticker data received', ApiErrorCode.SERVER_ERROR);
+      }
+
+      return validTicker;
     } catch (error) {
       logger.error(`Failed to fetch ticker for ${symbol}:`, error);
       throw error;
@@ -765,7 +792,11 @@ export class BitunixAPI {
     // Cache for 10 seconds
     this.setCache(cacheKey, data, 10000);
 
-    return data;
+    const validTickers = data
+      .map(t => validateTicker(t))
+      .filter((t): t is BitunixTicker24h => t !== null);
+
+    return validTickers;
   }
 
   /**

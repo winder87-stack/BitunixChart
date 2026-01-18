@@ -23,6 +23,8 @@ import {
   buildStreamName,
 } from '../../types/bitunix';
 
+import { validateKline } from './validators';
+
 // Import Kline type from preload (the format IPC uses)
 import type { Kline as IpcKline } from '../../types';
 
@@ -618,7 +620,7 @@ export class BitunixWebSocket extends SimpleEventEmitter {
     this.stats.lastMessageTime = Date.now();
 
     // Parse kline data to numeric values for charting
-    const parsedKline: ParsedKline = {
+    const parsedKlineCandidate: ParsedKline = {
       time: Math.floor(data.kline.openTime / 1000), // Convert to seconds
       open: parseFloat(data.kline.open),
       high: parseFloat(data.kline.high),
@@ -626,6 +628,12 @@ export class BitunixWebSocket extends SimpleEventEmitter {
       close: parseFloat(data.kline.close),
       volume: parseFloat(data.kline.volume),
     };
+
+    const parsedKline = validateKline(parsedKlineCandidate);
+    if (!parsedKline) {
+      this.logger.warn('Invalid WebSocket kline update dropped', data.kline);
+      return;
+    }
 
     // Emit global kline event
     this.emit('kline', {
