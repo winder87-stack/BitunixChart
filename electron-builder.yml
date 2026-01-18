@@ -24,11 +24,6 @@ linux:
       arch: [x64, arm64]
   category: Finance
   icon: assets/icons
-  desktop:
-    Name: Bitunix Charts
-    Comment: Cryptocurrency charting application
-    Categories: Finance;Office;
-    Keywords: crypto;trading;charts;bitcoin;
   maintainer: Bitunix Charts <support@bitunix.com>
 
 deb:

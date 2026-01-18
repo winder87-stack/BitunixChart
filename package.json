@@ -1,7 +1,7 @@
 {
   "name": "bitunix-charts",
   "private": true,
-  "version": "0.0.8",
+  "version": "0.0.9",
   "type": "module",
   "main": "dist/main/main.cjs",
   "description": "Professional cryptocurrency trading charts for Bitunix exchange",
@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron . --no-sandbox\"",
     "electron:build": "npm run build && electron-builder",
     "electron:build:linux": "npm run build && electron-builder --linux",
     "electron:build:deb": "npm run build && electron-builder --linux deb",
@@ -59,6 +59,7 @@
     "concurrently": "^8.2.2",
     "electron": "^35.7.5",
     "electron-builder": "^24.9.1",
+    "electron-devtools-installer": "^4.0.0",
     "eslint": "^8.55.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",
@@ -76,7 +77,7 @@
   },
   "build": {
     "appId": "com.bitunix.charts",
-    "productName": "Bitunix Charts",
+    "productName": "BitunixCharts",
     "directories": {
       "output": "dist"
     },
@@ -96,7 +97,10 @@
       ],
       "category": "Finance",
       "icon": "assets/icons",
-      "desktop": "build/bitunix-charts.desktop"
+      "executableArgs": [
+        "--no-sandbox",
+        "--disable-gpu"
+      ]
     },
     "deb": {
       "depends": [
@@ -108,7 +112,8 @@
         "xdg-utils",
         "libatspi2.0-0",
         "libuuid1"
-      ]
+      ],
+      "afterInstall": "scripts/postinst.sh"
     },
     "mac": {
       "target": "dmg",

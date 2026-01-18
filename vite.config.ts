@@ -25,8 +25,8 @@ export default defineConfig({
                 format: 'cjs',
                 entryFileNames: '[name].cjs',
               },
-              // Dependencies in package.json are automatically externalized by the plugin
-              external: [],
+              // ws must be external - it's Node.js only, browser shim breaks Electron
+              external: ['ws'],
             },
           },
         },
