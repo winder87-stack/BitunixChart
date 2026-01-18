@@ -41,6 +41,18 @@ npm run electron:dev
 
 This will start the Vite dev server and launch the Electron app with hot reload enabled.
 
+### Linux Troubleshooting
+
+#### App doesn't launch (Sandbox issues)
+If the app fails to launch on Ubuntu 24.04+ due to sandbox restrictions, the installed package includes a fix. However, if you are running the AppImage or raw binary:
+```bash
+./bitunix-charts --no-sandbox
+```
+
+#### No Data / Connection Issues
+Check the logs at `/tmp/bitunix-charts.log`.
+Ensure you have internet connectivity and can reach `fapi.bitunix.com`.
+
 ### Build for Production
 
 #### Linux
