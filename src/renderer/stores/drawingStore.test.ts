@@ -128,8 +128,8 @@ describe('drawingStore', () => {
     
     const movePoint = { time: 2000, price: 55000 };
     useDrawingStore.getState().updateCreationPreview(movePoint);
+    useDrawingStore.getState().addCreationPoint(movePoint);
     
-    state.creationPoints.push(movePoint);
     const id = useDrawingStore.getState().completeCreation();
     
     expect(id).toBeTruthy();

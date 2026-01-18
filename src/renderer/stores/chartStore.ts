@@ -257,7 +257,7 @@ export const useChartStore = create<ChartStore>()(
               DEFAULT_KLINE_LIMIT
             );
             
-            if (response.success && response.data) {
+            if (response.success && response.data && Array.isArray(response.data)) {
               const rawKlines = response.data as Kline[];
               const parsedKlines = rawKlines.map(parseKline);
               

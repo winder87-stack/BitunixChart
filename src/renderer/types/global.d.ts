@@ -36,5 +36,14 @@ export interface BitunixPreloadAPI {
 declare global {
   interface Window {
     bitunix: BitunixPreloadAPI;
+    __CHART_DEBUG__?: {
+      getCandles: () => any[];
+      getSeries: () => any;
+      getLastCandle: () => any;
+      getCandleCount: () => number;
+      isInitialized: () => boolean;
+      triggerUpdate: (candle: any) => void;
+      forceSetData: () => void;
+    };
   }
 }
