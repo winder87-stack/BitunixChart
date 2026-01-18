@@ -2,6 +2,7 @@ import { ipcMain, BrowserWindow, app } from 'electron';
 import axios, { AxiosError } from 'axios';
 import WebSocket from 'ws';
 import os from 'os';
+import log from 'electron-log';
 
 // =============================================================================
 // Type Definitions
@@ -42,7 +43,7 @@ interface KlineData {
 
 const CONFIG = {
   API_BASE_URL: 'https://fapi.bitunix.com',
-  WS_URL: 'wss://fapi.bitunix.com/public',
+  WS_URL: 'wss://fapi.bitunix.com/public/',
   REQUEST_TIMEOUT: 10000,
   WS_PING_INTERVAL: 30000,
   WS_RECONNECT_DELAY: 5000,
@@ -199,13 +200,13 @@ class WebSocketManager {
     }
 
     this.sendStatus('connecting');
-    console.log('[WS] Connecting to', CONFIG.WS_URL);
+    log.info('[WS] Connecting to', CONFIG.WS_URL);
 
     try {
       this.ws = new WebSocket(CONFIG.WS_URL);
 
       this.ws.on('open', () => {
-        console.log('[WS] Connected');
+        log.info('[WS] Connected');
         this.sendStatus('connected');
         this.reconnectAttempts = 0;
         this.startPing();
@@ -219,22 +220,22 @@ class WebSocketManager {
           const message = JSON.parse(data.toString());
           this.handleMessage(message);
         } catch (error) {
-          console.error('[WS] Error parsing message:', error);
+          log.error('[WS] Error parsing message:', error);
         }
       });
 
       this.ws.on('close', (code: number, reason: Buffer) => {
-        console.log(`[WS] Closed: ${code} - ${reason.toString()}`);
+        log.info(`[WS] Closed: ${code} - ${reason.toString()}`);
         this.stopPing();
         this.handleDisconnect();
       });
 
       this.ws.on('error', (error: Error) => {
-        console.error('[WS] Error:', error.message);
+        log.error('[WS] Error:', error.message);
         this.sendError(error.message, 'WS_ERROR');
       });
     } catch (error) {
-      console.error('[WS] Connection error:', error);
+      log.error('[WS] Connection error:', error);
       this.sendError('Failed to connect to WebSocket', 'WS_CONNECTION_ERROR');
       this.handleDisconnect();
     }
@@ -262,17 +263,27 @@ class WebSocketManager {
       };
       
       const interval = revMap[intervalPart] || '1m';
+      const duration = this.getDuration(interval);
+      const ts = message.ts as number;
+      const openTime = Math.floor(ts / duration) * duration;
 
       if (data) {
+        const rawVolume = data.b ?? data.v ?? data.V ?? data.volume ?? data.baseVolume ?? '0';
+        const parsedVolume = String(rawVolume);
+        
+        if (!data.o && !data.h && !data.l && !data.c) {
+          log.warn('[WS] Unknown kline message format:', JSON.stringify(message).slice(0, 200));
+        }
+        
         const kline: KlineData = {
-          openTime: message.ts as number,
+          openTime: openTime,
           open: data.o as string,
           high: data.h as string,
           low: data.l as string,
           close: data.c as string,
-          volume: data.b as string,
-          closeTime: (message.ts as number) + this.getDuration(interval),
-          quoteVolume: data.q as string,
+          volume: parsedVolume,
+          closeTime: openTime + duration - 1,
+          quoteVolume: (data.q ?? data.Q ?? data.quoteVolume ?? '0') as string,
           trades: 0,
           takerBuyBaseVolume: '0',
           takerBuyQuoteVolume: '0',
@@ -297,7 +308,7 @@ class WebSocketManager {
     if (this.reconnectAttempts < CONFIG.WS_MAX_RECONNECT_ATTEMPTS) {
       this.reconnectAttempts++;
       this.sendStatus('reconnecting');
-      console.log(`[WS] Reconnecting in ${CONFIG.WS_RECONNECT_DELAY}ms (attempt ${this.reconnectAttempts}/${CONFIG.WS_MAX_RECONNECT_ATTEMPTS})`);
+      log.info(`[WS] Reconnecting in ${CONFIG.WS_RECONNECT_DELAY}ms (attempt ${this.reconnectAttempts}/${CONFIG.WS_MAX_RECONNECT_ATTEMPTS})`);
       
       this.reconnectTimeout = setTimeout(() => {
         this.connect();
@@ -358,7 +369,7 @@ class WebSocketManager {
         }]
       };
       this.ws.send(JSON.stringify(message));
-      console.log(`[WS] Subscribed to ${params.symbol} ${params.interval}`);
+      log.info(`[WS] Subscribed to ${params.symbol} ${params.interval}`);
     }
 
     return { success: true };
@@ -387,7 +398,7 @@ class WebSocketManager {
         }]
       };
       this.ws.send(JSON.stringify(message));
-      console.log(`[WS] Unsubscribed from ${params.symbol} ${params.interval}`);
+      log.info(`[WS] Unsubscribed from ${params.symbol} ${params.interval}`);
     }
 
     // Disconnect if no more subscriptions
@@ -445,7 +456,7 @@ class WebSocketManager {
           args
         };
         this.ws.send(JSON.stringify(message));
-        console.log(`[WS] Resubscribed to ${args.length} streams`);
+        log.info(`[WS] Resubscribed to ${args.length} streams`);
       }
     }
   }
@@ -531,7 +542,7 @@ async function apiRequest<T>(
       || axiosError.message 
       || 'Unknown error';
     
-    console.error(`[API] Error fetching ${endpoint}:`, errorMessage);
+    log.error(`[API] Error fetching ${endpoint}:`, errorMessage);
     
     return {
       success: false,
@@ -547,7 +558,7 @@ async function apiRequest<T>(
 // =============================================================================
 
 export function registerIpcHandlers(): void {
-  console.log('[IPC] Registering handlers...');
+  log.info('[IPC] Registering handlers...');
 
   // ===========================================================================
   // Market Data - REST API
@@ -557,7 +568,46 @@ export function registerIpcHandlers(): void {
    * Get all available trading symbols
    */
   ipcMain.handle('bitunix:get-symbols', async () => {
-    return apiRequest('/api/v1/market/symbols');
+    const response = await apiRequest<Array<{
+      symbol: string;
+      base: string;
+      quote: string;
+      minTradeVolume: string;
+      basePrecision: number;
+      quotePrecision: number;
+      maxLeverage: number;
+      minLeverage: number;
+      symbolStatus: string;
+    }>>('/api/v1/futures/market/trading_pairs');
+    
+    if (response.success && Array.isArray(response.data)) {
+      const transformedData = response.data
+        .filter(s => s.symbolStatus === 'OPEN')
+        .map(s => ({
+          symbol: s.symbol,
+          baseAsset: s.base,
+          quoteAsset: s.quote,
+          baseAssetPrecision: s.basePrecision,
+          quoteAssetPrecision: s.quotePrecision,
+          pricePrecision: s.quotePrecision,
+          quantityPrecision: s.basePrecision,
+          status: 'TRADING' as const,
+          orderTypes: ['LIMIT', 'MARKET'],
+          icebergAllowed: false,
+          ocoAllowed: false,
+          isSpotTradingAllowed: false,
+          isMarginTradingAllowed: true,
+          filters: [
+            { filterType: 'PRICE_FILTER', tickSize: Math.pow(10, -s.quotePrecision).toFixed(s.quotePrecision) },
+            { filterType: 'LOT_SIZE', minQty: s.minTradeVolume, maxQty: '10000' },
+            { filterType: 'MIN_NOTIONAL', minNotional: '10' },
+          ],
+          permissions: ['FUTURES'],
+        }));
+      return { ...response, data: transformedData };
+    }
+    
+    return response;
   });
 
   /**
@@ -569,27 +619,143 @@ export function registerIpcHandlers(): void {
     limit?: number;
   }) => {
     const { symbol, interval, limit = 500 } = params;
-    return apiRequest('/api/v1/market/klines', {
+    const response = await apiRequest<Array<{
+      time: string;
+      open: string;
+      high: string;
+      low: string;
+      close: string;
+      quoteVol: string;
+      baseVol: string;
+    }>>('/api/v1/futures/market/kline', {
       symbol: symbol.toUpperCase(),
       interval,
       limit: Math.min(limit, 1000),
     });
+    
+    if (response.success && Array.isArray(response.data)) {
+      const transformedData: KlineData[] = response.data.map(k => ({
+        openTime: parseInt(k.time, 10),
+        open: k.open,
+        high: k.high,
+        low: k.low,
+        close: k.close,
+        volume: k.quoteVol,
+        closeTime: parseInt(k.time, 10) + 60000,
+        quoteVolume: k.baseVol,
+        trades: 0,
+        takerBuyBaseVolume: '0',
+        takerBuyQuoteVolume: '0',
+      }));
+      return { ...response, data: transformedData };
+    }
+    
+    return response;
   });
 
   /**
    * Get 24hr ticker statistics for a symbol
    */
   ipcMain.handle('bitunix:get-ticker', async (_event, params: { symbol: string }) => {
-    return apiRequest('/api/v1/market/ticker/24hr', {
+    const response = await apiRequest<{
+      symbol: string;
+      markPrice: string;
+      lastPrice: string;
+      open: string;
+      high: string;
+      low: string;
+      quoteVol: string;
+      baseVol: string;
+    }>('/api/v1/futures/market/tickers', {
       symbol: params.symbol.toUpperCase(),
-      });
+    });
+    
+    if (response.success && response.data) {
+      const t = response.data;
+      const openPrice = parseFloat(t.open) || 0;
+      const lastPrice = parseFloat(t.lastPrice) || 0;
+      const priceChange = lastPrice - openPrice;
+      const priceChangePercent = openPrice > 0 ? (priceChange / openPrice) * 100 : 0;
+      
+      const transformedData = {
+        symbol: t.symbol,
+        priceChange: priceChange.toString(),
+        priceChangePercent: priceChangePercent.toFixed(2),
+        weightedAvgPrice: t.markPrice,
+        prevClosePrice: t.open,
+        lastPrice: t.lastPrice,
+        lastQty: '0',
+        bidPrice: t.lastPrice,
+        bidQty: '0',
+        askPrice: t.lastPrice,
+        askQty: '0',
+        openPrice: t.open,
+        highPrice: t.high,
+        lowPrice: t.low,
+        volume: t.baseVol,
+        quoteVolume: t.quoteVol,
+        openTime: Date.now() - 86400000,
+        closeTime: Date.now(),
+        firstId: 0,
+        lastId: 0,
+        count: 0,
+      };
+      return { ...response, data: transformedData };
+    }
+    
+    return response;
   });
 
   /**
    * Get 24hr ticker statistics for all symbols
    */
   ipcMain.handle('bitunix:get-all-tickers', async () => {
-    return apiRequest('/api/v1/market/ticker/24hr');
+    const response = await apiRequest<Array<{
+      symbol: string;
+      markPrice: string;
+      lastPrice: string;
+      open: string;
+      high: string;
+      low: string;
+      quoteVol: string;
+      baseVol: string;
+    }>>('/api/v1/futures/market/tickers');
+    
+    if (response.success && Array.isArray(response.data)) {
+      const transformedData = response.data.map(t => {
+        const openPrice = parseFloat(t.open) || 0;
+        const lastPrice = parseFloat(t.lastPrice) || 0;
+        const priceChange = lastPrice - openPrice;
+        const priceChangePercent = openPrice > 0 ? (priceChange / openPrice) * 100 : 0;
+        
+        return {
+          symbol: t.symbol,
+          priceChange: priceChange.toString(),
+          priceChangePercent: priceChangePercent.toFixed(2),
+          weightedAvgPrice: t.markPrice,
+          prevClosePrice: t.open,
+          lastPrice: t.lastPrice,
+          lastQty: '0',
+          bidPrice: t.lastPrice,
+          bidQty: '0',
+          askPrice: t.lastPrice,
+          askQty: '0',
+          openPrice: t.open,
+          highPrice: t.high,
+          lowPrice: t.low,
+          volume: t.baseVol,
+          quoteVolume: t.quoteVol,
+          openTime: Date.now() - 86400000,
+          closeTime: Date.now(),
+          firstId: 0,
+          lastId: 0,
+          count: 0,
+        };
+      });
+      return { ...response, data: transformedData };
+    }
+    
+    return response;
   });
 
   // ===========================================================================
@@ -702,7 +868,7 @@ export function registerIpcHandlers(): void {
     return win?.isMaximized() ?? false;
   });
 
-  console.log('[IPC] Handlers registered successfully');
+  log.info('[IPC] Handlers registered successfully');
 }
 
 // =============================================================================
@@ -710,6 +876,6 @@ export function registerIpcHandlers(): void {
 // =============================================================================
 
 export function cleanupWebSocket(): void {
-  console.log('[WS] Cleaning up WebSocket connections...');
+  log.info('[WS] Cleaning up WebSocket connections...');
   wsManager.cleanup();
 }

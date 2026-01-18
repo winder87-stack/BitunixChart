@@ -1,4 +1,4 @@
-import { app, BrowserWindow, nativeTheme, shell } from 'electron';
+import { app, BrowserWindow, nativeTheme, shell, Menu } from 'electron';
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
@@ -26,6 +26,52 @@ const WINDOW_CONFIG = {
   MIN_WIDTH: 1000,
   MIN_HEIGHT: 700,
 } as const;
+
+// =============================================================================
+// Application Menu
+// =============================================================================
+
+const template: Electron.MenuItemConstructorOptions[] = [
+  {
+    label: 'View',
+    submenu: [
+      { role: 'reload' },
+      { role: 'forceReload' },
+      { type: 'separator' },
+      { role: 'toggleDevTools' },
+      { type: 'separator' },
+      { role: 'resetZoom' },
+      { role: 'zoomIn' },
+      { role: 'zoomOut' },
+      { type: 'separator' },
+      { role: 'togglefullscreen' }
+    ]
+  },
+  {
+    label: 'Debug',
+    submenu: [
+      {
+        label: 'Show DevTools',
+        accelerator: 'F12',
+        click: () => mainWindow?.webContents.openDevTools()
+      },
+      {
+        label: 'Reload',
+        accelerator: 'CmdOrCtrl+R',
+        click: () => mainWindow?.reload()
+      },
+      { type: 'separator' },
+      {
+        label: 'Log Chart State',
+        click: () => mainWindow?.webContents.executeJavaScript(
+          'console.log("Chart State:", window.bitunix)'
+        )
+      }
+    ]
+  }
+];
+
+Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 
 /**
  * Creates the main application window
@@ -224,7 +270,19 @@ if (!gotTheLock) {
     app.commandLine.appendSwitch('disable-software-rasterizer');
   }
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
+    // Install React DevTools in development
+    if (isDev) {
+      try {
+        const { default: installExtension, REACT_DEVELOPER_TOOLS } = 
+          await import('electron-devtools-installer');
+        await installExtension(REACT_DEVELOPER_TOOLS);
+        log.info('[Main] React DevTools installed');
+      } catch (e) {
+        log.error('[Main] Failed to install React DevTools:', e);
+      }
+    }
+
     // Register IPC handlers before creating window
     registerIpcHandlers();
     
