@@ -12,16 +12,33 @@ import { StatusBar } from './components/StatusBar/StatusBar';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useChartStore } from './stores/chartStore';
 import { useIndicators } from './hooks/useIndicators';
+import { useQuadStochastic, useSignalTracker } from './hooks/useQuadStochastic';
+import { useQuadStochasticScanner } from './hooks/useQuadStochasticScanner';
 import { cn } from './lib/utils';
 import { TooltipProvider } from './components/ui/tooltip';
 
 const App: React.FC = () => {
   // Global state
-  const { klines, fetchKlines, subscribe, isSubscribed } = useChartStore();
+  const { klines, fetchKlines, subscribe, isSubscribed, symbol } = useChartStore();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   
   // Initialize indicator worker
   useIndicators(klines);
+
+  // Initialize Quad Stochastic System
+  const activeSymbol = symbol || 'BTCUSDT'; 
+  const currentPrice = klines.length > 0 ? klines[klines.length - 1].close : 0;
+
+  useQuadStochastic({
+    symbol: activeSymbol,
+    enabled: true,
+    throttleMs: 500
+  });
+
+  useSignalTracker(activeSymbol, currentPrice);
+  
+  // Initialize Scanner (background process)
+  useQuadStochasticScanner();
   
   // Initial data load and subscription
   useEffect(() => {

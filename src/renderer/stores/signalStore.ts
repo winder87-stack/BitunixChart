@@ -44,6 +44,7 @@ interface SignalState {
   scannerSymbols: string[];
   scannerResults: Record<string, ScannerResult>;
   scannerLoading: boolean;
+  isScanning: boolean;
   
   // UI state
   showSignalPanel: boolean;
@@ -89,6 +90,7 @@ interface SignalActions {
   removeScannerSymbol: (symbol: string) => void;
   setScannerResult: (result: ScannerResult) => void;
   setScannerLoading: (loading: boolean) => void;
+  setIsScanning: (scanning: boolean) => void;
   
   clearHistory: () => void;
 }
@@ -121,6 +123,7 @@ export const useSignalStore = create<SignalStore>()(
       scannerSymbols: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT'],
       scannerResults: {},
       scannerLoading: false,
+      isScanning: false,
       showSignalPanel: true,
       showQuadPane: true,
       selectedSignal: null,
@@ -341,6 +344,12 @@ export const useSignalStore = create<SignalStore>()(
       setScannerLoading: (loading) => {
         set((draft) => {
           draft.scannerLoading = loading;
+        });
+      },
+
+      setIsScanning: (scanning) => {
+        set((draft) => {
+          draft.isScanning = scanning;
         });
       },
 
