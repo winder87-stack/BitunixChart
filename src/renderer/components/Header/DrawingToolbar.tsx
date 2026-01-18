@@ -74,6 +74,7 @@ export const DrawingToolbar: React.FC = () => {
               !activeTool && 'bg-surface text-primary'
             )}
             onClick={handleSelectMode}
+            aria-label="Select Mode"
           >
             <MousePointer2 className="w-4 h-4" />
           </Button>
@@ -92,6 +93,7 @@ export const DrawingToolbar: React.FC = () => {
                 activeTool === tool && 'bg-surface text-primary'
               )}
               onClick={() => handleToolClick(tool)}
+              aria-label={TOOL_LABELS[tool]}
             >
               {TOOL_ICONS[tool]}
             </Button>

@@ -1,7 +1,17 @@
 import { app, BrowserWindow, nativeTheme, shell } from 'electron';
 import path from 'path';
 import os from 'os';
+import fs from 'fs';
+import log from 'electron-log';
 import { registerIpcHandlers, cleanupWebSocket } from './ipc-handlers';
+
+// Configure logging
+log.transports.file.level = 'debug';
+log.transports.file.resolvePathFn = () => '/tmp/bitunix-charts.log';
+
+log.info('App starting...');
+log.info('__dirname:', __dirname);
+log.info('app.getAppPath():', app.getAppPath());
 
 // Environment detection
 const isDev = !app.isPackaged;
@@ -21,8 +31,25 @@ const WINDOW_CONFIG = {
  * Creates the main application window
  */
 function createWindow(): void {
+  log.info('[Main] Creating window...');
+  log.info('[Main] __dirname:', __dirname);
+  log.info('[Main] app.getAppPath():', app.getAppPath());
+  log.info('[Main] app.isPackaged:', app.isPackaged);
+
   // Force dark mode for the native frame
   nativeTheme.themeSource = 'dark';
+
+  // Fix preload path
+  const preloadPath = app.isPackaged
+    ? path.join(__dirname, 'preload.cjs')
+    : path.join(__dirname, '../../dist/main/preload.cjs');
+
+  log.info('[Main] Preload path:', preloadPath);
+  try {
+    log.info('[Main] Preload exists:', fs.existsSync(preloadPath));
+  } catch (e: any) {
+    log.error('[Main] Preload check error:', e.message);
+  }
 
   mainWindow = new BrowserWindow({
     width: WINDOW_CONFIG.DEFAULT_WIDTH,
@@ -31,7 +58,7 @@ function createWindow(): void {
     minHeight: WINDOW_CONFIG.MIN_HEIGHT,
     
     // Dark frame/titlebar
-    backgroundColor: '#0a0a0f',
+    backgroundColor: '#131722',
     darkTheme: true,
     
     // Window appearance
@@ -44,7 +71,7 @@ function createWindow(): void {
     
     // Web preferences with security enabled
     webPreferences: {
-      preload: path.join(__dirname, 'preload.cjs'),
+      preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false,
       webSecurity: true,
@@ -61,14 +88,17 @@ function createWindow(): void {
     mainWindow?.focus();
   });
 
-  // Load the app
-  if (isDev) {
-    mainWindow.loadURL('http://localhost:5173');
-    // Open DevTools in development
-    mainWindow.webContents.openDevTools({ mode: 'detach' });
-  } else {
-    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
-  }
+  // Monitor loading errors
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    log.error('[Main] Load failed:', errorCode, errorDescription, validatedURL);
+  });
+
+  mainWindow.webContents.on('did-finish-load', () => {
+    log.info('[Main] Renderer loaded successfully');
+  });
+
+  // Always open DevTools for debugging (remove in production)
+  mainWindow.webContents.openDevTools();
 
   // Handle external links - open in default browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -91,13 +121,31 @@ function createWindow(): void {
     mainWindow = null;
   });
 
-  // Log window info in dev mode
+  // Load the app
   if (isDev) {
-    console.log('[Main] Window created');
-    console.log('[Main] Platform:', process.platform);
-    console.log('[Main] Electron:', process.versions.electron);
-    console.log('[Main] Node:', process.versions.node);
-    console.log('[Main] Chrome:', process.versions.chrome);
+    log.info('[Main] Loading dev server...');
+    mainWindow.loadURL('http://localhost:5173');
+  } else {
+    const htmlPath = app.isPackaged
+      ? path.join(app.getAppPath(), 'dist/renderer/index.html') 
+      : path.join(__dirname, '../renderer/index.html');
+
+    log.info('[Main] Loading HTML from:', htmlPath);
+    
+    try {
+      const exists = fs.existsSync(htmlPath);
+      log.info('[Main] File exists:', exists);
+      if (!exists) {
+        const dir = path.dirname(htmlPath);
+        log.info(`[Main] Files in ${dir}:`, fs.readdirSync(dir));
+      }
+    } catch (e: any) {
+      log.error('[Main] FS Check error:', e.message);
+    }
+
+    mainWindow.loadFile(htmlPath).catch(err => {
+      log.error('[Main] Failed to load HTML:', err);
+    });
   }
 }
 
@@ -168,6 +216,14 @@ if (!gotTheLock) {
   });
 
   // App ready
+  if (process.platform === 'linux') {
+    app.disableHardwareAcceleration();
+    app.commandLine.appendSwitch('no-sandbox');
+    app.commandLine.appendSwitch('disable-gpu');
+    app.commandLine.appendSwitch('ozone-platform', 'x11');
+    app.commandLine.appendSwitch('disable-software-rasterizer');
+  }
+
   app.whenReady().then(() => {
     // Register IPC handlers before creating window
     registerIpcHandlers();
@@ -201,9 +257,9 @@ app.on('before-quit', () => {
 
 // Handle unhandled errors
 process.on('uncaughtException', (error) => {
-  console.error('[Main] Uncaught Exception:', error);
+  log.error('[Main] Uncaught Exception:', error);
 });
 
 process.on('unhandledRejection', (reason) => {
-  console.error('[Main] Unhandled Rejection:', reason);
+  log.error('[Main] Unhandled Rejection:', reason);
 });

@@ -594,8 +594,12 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
         if (drawing.data.type === 'horizontalLine') {
           // Horizontal line: just update price
           updateDrawingData(draggingId, { price: point.price });
-        } else if (drawing.data.type === 'trendline') {
-          // Trendline: delta update
+        } else if (
+          drawing.data.type === 'trendline' ||
+          drawing.data.type === 'fibonacciRetracement'
+        ) {
+          // Trendline & Fib: delta update
+          // This logic is shared because both use start/end points and move identically
           const startChart = pixelToChart(dragStart.x, dragStart.y);
           if (startChart) {
             const priceDelta = point.price - startChart.price;

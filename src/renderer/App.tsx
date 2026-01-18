@@ -13,6 +13,7 @@ import { useChartStore } from './stores/chartStore';
 import { useIndicators } from './hooks/useIndicators';
 import { useWebSocket } from './hooks/useWebSocket';
 import { cn } from './lib/utils';
+import { TooltipProvider } from './components/ui/tooltip';
 
 const App: React.FC = () => {
   // Global state
@@ -57,53 +58,55 @@ const App: React.FC = () => {
   }, []);
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-background text-text-primary overflow-hidden">
-      {/* Top Header */}
-      <TopBar />
-      
-      {/* Main Content Area */}
-      <div className="flex-1 flex overflow-hidden relative">
-        {/* Chart Area */}
-        <div className="flex-1 flex flex-col min-w-0 relative">
-          <ChartContainer className="flex-1" />
-          
-          {/* Overlay for connection issues */}
-          {!isConnected && (
-            <div className="absolute top-2 right-2 bg-destructive/80 text-destructive-foreground text-xs px-2 py-1 rounded shadow pointer-events-none z-50 animate-pulse">
-              Reconnecting...
-            </div>
-          )}
-        </div>
+    <TooltipProvider>
+      <div className="flex flex-col h-screen w-screen bg-background text-text-primary overflow-hidden">
+        {/* Top Header */}
+        <TopBar />
         
-        {/* Right Sidebar */}
-        <div 
-          className={cn(
-            "transition-all duration-300 ease-in-out border-l border-border bg-background",
-            sidebarOpen ? "w-[300px] opacity-100" : "w-0 opacity-0 overflow-hidden border-none"
-          )}
-        >
-          <div className="w-[300px] h-full">
-            <Sidebar />
+        {/* Main Content Area */}
+        <div className="flex-1 flex overflow-hidden relative">
+          {/* Chart Area */}
+          <div className="flex-1 flex flex-col min-w-0 relative">
+            <ChartContainer className="flex-1" />
+            
+            {/* Overlay for connection issues */}
+            {!isConnected && (
+              <div className="absolute top-2 right-2 bg-destructive/80 text-destructive-foreground text-xs px-2 py-1 rounded shadow pointer-events-none z-50 animate-pulse">
+                Reconnecting...
+              </div>
+            )}
           </div>
+          
+          {/* Right Sidebar */}
+          <div 
+            className={cn(
+              "transition-all duration-300 ease-in-out border-l border-border bg-background",
+              sidebarOpen ? "w-[300px] opacity-100" : "w-0 opacity-0 overflow-hidden border-none"
+            )}
+          >
+            <div className="w-[300px] h-full">
+              <Sidebar />
+            </div>
+          </div>
+          
+          {/* Sidebar Toggle Button (floating when closed) */}
+          {!sidebarOpen && (
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="absolute right-0 top-1/2 -translate-y-1/2 bg-surface border border-border border-r-0 rounded-l p-1 text-text-secondary hover:text-text-primary shadow-lg z-10"
+              title="Open Sidebar (I)"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          )}
         </div>
         
-        {/* Sidebar Toggle Button (floating when closed) */}
-        {!sidebarOpen && (
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="absolute right-0 top-1/2 -translate-y-1/2 bg-surface border border-border border-r-0 rounded-l p-1 text-text-secondary hover:text-text-primary shadow-lg z-10"
-            title="Open Sidebar (I)"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-        )}
+        {/* Bottom Status Bar */}
+        <StatusBar />
       </div>
-      
-      {/* Bottom Status Bar */}
-      <StatusBar />
-    </div>
+    </TooltipProvider>
   );
 };
 

@@ -60,11 +60,15 @@ export default defineConfig({
       '@': path.resolve(__dirname, 'src/renderer'),
     },
   },
+  base: './',
   build: {
     outDir: 'dist/renderer',
     emptyOutDir: true,
     rollupOptions: {
       output: {
+        entryFileNames: 'assets/[name].js',
+        chunkFileNames: 'assets/[name].js',
+        assetFileNames: 'assets/[name].[ext]',
         manualChunks: {
           'vendor-react': ['react', 'react-dom'],
           'vendor-charts': ['lightweight-charts'],

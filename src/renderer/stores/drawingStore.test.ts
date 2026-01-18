@@ -117,4 +117,24 @@ describe('drawingStore', () => {
     expect(state.isDrawingMode).toBe(false);
     expect(state.getDrawingsForSymbol('BTCUSDT')).toHaveLength(1);
   });
+
+  it('should handle fibonacci creation', () => {
+    useDrawingStore.getState().setActiveTool('fibonacciRetracement');
+    const startPoint = { time: 1000, price: 50000 };
+    
+    useDrawingStore.getState().startCreation('BTCUSDT', startPoint);
+    let state = useDrawingStore.getState();
+    expect(state.creatingDrawing?.data.type).toBe('fibonacciRetracement');
+    
+    const movePoint = { time: 2000, price: 55000 };
+    useDrawingStore.getState().updateCreationPreview(movePoint);
+    
+    state.creationPoints.push(movePoint);
+    const id = useDrawingStore.getState().completeCreation();
+    
+    expect(id).toBeTruthy();
+    const drawing = useDrawingStore.getState().getDrawing(id!);
+    expect(drawing?.data.type).toBe('fibonacciRetracement');
+    expect((drawing?.data as any).endPoint).toEqual(movePoint);
+  });
 });
