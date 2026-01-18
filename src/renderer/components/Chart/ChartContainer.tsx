@@ -38,6 +38,8 @@ import { getIndicatorDefinition } from '../../services/indicators/definitions';
 import { normalizeKline, NormalizedKline } from '../../utils/klineUtils';
 import { useRealtimeKlines } from '../../hooks/useRealtimeKlines';
 import { DrawingOverlay } from './DrawingOverlay';
+import { QuadStochPane } from '../indicators/QuadStochPane';
+import { useSignalStore } from '../../stores/signalStore';
 
 // =============================================================================
 // Types
@@ -140,6 +142,7 @@ const CHART_OPTIONS = {
 // Pane height is adjustable - minimum threshold
 const DEFAULT_PANE_HEIGHT = 120;
 const VOLUME_PANE_HEIGHT = 80;
+const QUAD_PANE_HEIGHT = 150;
 
 // =============================================================================
 // Component
@@ -180,6 +183,8 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
   const showGrid = useChartStore(state => state.showGrid);
   const showVolume = useChartStore(selectShowVolume);
   const setCrosshair = useChartStore(state => state.setCrosshair);
+  
+  const showQuadPane = useSignalStore(state => state.showQuadPane);
   
   const overlayIndicators = useIndicatorStore(selectVisibleOverlayIndicators);
   const separateIndicators = useIndicatorStore(selectVisibleSeparateIndicators);
@@ -596,12 +601,13 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
     const totalHeight = containerRef.current.clientHeight;
     const numPanes = separatePanesRef.current.size;
     const volumeHeight = showVolume ? VOLUME_PANE_HEIGHT : 0;
+    const quadHeight = showQuadPane ? QUAD_PANE_HEIGHT : 0;
     const paneHeightsTotal = numPanes * DEFAULT_PANE_HEIGHT;
     
     // Calculate main chart height
     const newMainHeight = Math.max(
       200,
-      totalHeight - paneHeightsTotal - volumeHeight - 20
+      totalHeight - paneHeightsTotal - volumeHeight - quadHeight - 20
     );
     
     setMainChartHeight(newMainHeight);
@@ -609,7 +615,7 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
     if (chartRef.current) {
       chartRef.current.applyOptions({ height: newMainHeight });
     }
-  }, [showVolume]);
+  }, [showVolume, showQuadPane]);
 
   // ==========================================================================
   // Update Separate Indicator Panes
@@ -878,6 +884,14 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
           />
         )}
       </div>
+      
+      {/* Quad Stochastic Pane */}
+      {showQuadPane && (
+        <QuadStochPane 
+          mainChart={chartRef.current} 
+          height={QUAD_PANE_HEIGHT} 
+        />
+      )}
       
       {/* Separate indicator panes are added dynamically via DOM */}
       

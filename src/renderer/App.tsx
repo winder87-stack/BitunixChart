@@ -14,6 +14,7 @@ import { useChartStore } from './stores/chartStore';
 import { useIndicators } from './hooks/useIndicators';
 import { useQuadStochastic, useSignalTracker } from './hooks/useQuadStochastic';
 import { useQuadStochasticScanner } from './hooks/useQuadStochasticScanner';
+import { SignalAlertContainer } from './components/signals/SignalAlert';
 import { cn } from './lib/utils';
 import { TooltipProvider } from './components/ui/tooltip';
 
@@ -127,6 +128,9 @@ const App: React.FC = () => {
         <ErrorBoundary fallbackTitle="Status Bar Error">
           <StatusBar />
         </ErrorBoundary>
+        
+        {/* Signal Alerts */}
+        <SignalAlertContainer />
       </div>
     </TooltipProvider>
   );
