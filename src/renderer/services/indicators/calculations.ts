@@ -789,13 +789,22 @@ function calculateBollingerBands(
     stdDev,
   });
   
-  // Also calculate bandwidth and %B
   const outputs = {
     upper: result.map(r => r.upper),
     middle: result.map(r => r.middle),
     lower: result.map(r => r.lower),
-    bandwidth: result.map(r => ((r.upper - r.lower) / r.middle) * 100),
-    percentB: result.map(r => (values[values.length - result.length + result.indexOf(r)] - r.lower) / (r.upper - r.lower) * 100),
+    bandwidth: result.map(r => {
+      if (r.middle === 0) return 0;
+      return ((r.upper - r.lower) / r.middle) * 100;
+    }),
+    percentB: result.map((r, i) => {
+      const bandWidth = r.upper - r.lower;
+      if (bandWidth === 0) return 50; // Flat bands = price at midpoint
+      const priceIndex = values.length - result.length + i;
+      const price = values[priceIndex];
+      const percentB = ((price - r.lower) / bandWidth) * 100;
+      return Number.isFinite(percentB) ? percentB : 50;
+    }),
   };
   
   return alignMultipleResults(klines, outputs);
@@ -1003,6 +1012,12 @@ function calculateVolumeProfile(
   }
   
   const priceRange = maxPrice - minPrice;
+  
+  // Prevent division by zero if all prices are the same
+  if (priceRange === 0) {
+    return [];
+  }
+
   const rowHeight = priceRange / rowCount;
   
   // Initialize volume buckets
