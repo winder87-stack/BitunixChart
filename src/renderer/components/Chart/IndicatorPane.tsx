@@ -375,10 +375,16 @@ export const IndicatorPane: React.FC<IndicatorPaneProps> = ({
     });
     
     // Subscribe to time scale changes
-    chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+    const handleTimeScaleChange = (range: LogicalRange | null) => {
       onTimeScaleChange?.(range);
-    });
+    };
+
+    chart.timeScale().subscribeVisibleLogicalRangeChange(handleTimeScaleChange);
     
+    return () => {
+      chart.timeScale().unsubscribeVisibleLogicalRangeChange(handleTimeScaleChange);
+      chart.remove();
+    };
   }, [currentHeight, isLastPane, onCrosshairMove, onTimeScaleChange]);
   
   // ==========================================================================

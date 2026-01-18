@@ -32,9 +32,11 @@ import {
   Time,
 } from 'lightweight-charts';
 
-import { useChartStore, selectKlines, selectChartSettings, selectShowVolume } from '../../stores/chartStore';
+import { useChartStore, selectKlines, selectShowVolume } from '../../stores/chartStore';
 import { useIndicatorStore, selectVisibleOverlayIndicators, selectVisibleSeparateIndicators } from '../../stores/indicatorStore';
 import { getIndicatorDefinition } from '../../services/indicators/definitions';
+import { normalizeKline, NormalizedKline } from '../../utils/klineUtils';
+import { useRealtimeKlines } from '../../hooks/useRealtimeKlines';
 import { DrawingOverlay } from './DrawingOverlay';
 
 // =============================================================================
@@ -163,10 +165,19 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
   // Local state
   const [isInitialized, setIsInitialized] = useState(false);
   const [mainChartHeight, setMainChartHeight] = useState(400);
+  const lastCandleTimeRef = useRef<number>(0);
+  const hasInitialFitRef = useRef(false);
+  const dataLoadedForRef = useRef<string | null>(null);
+  const updateCountRef = useRef(0);
+  const lastUpdateTimeRef = useRef(Date.now());
   
   // Store subscriptions
   const klines = useChartStore(selectKlines);
-  const { chartType, priceScale, showGrid } = useChartStore(selectChartSettings);
+  const symbol = useChartStore(state => state.symbol);
+  const timeframe = useChartStore(state => state.timeframe);
+  const chartType = useChartStore(state => state.chartType);
+  const priceScale = useChartStore(state => state.priceScale);
+  const showGrid = useChartStore(state => state.showGrid);
   const showVolume = useChartStore(selectShowVolume);
   const setCrosshair = useChartStore(state => state.setCrosshair);
   
@@ -186,7 +197,7 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
     const chart = createChart(mainChartRef.current, {
       ...CHART_OPTIONS,
       width: mainChartRef.current.clientWidth,
-      height: mainChartHeight,
+      height: 400,
     });
     
     chartRef.current = chart;
@@ -200,6 +211,7 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
       wickUpColor: CHART_COLORS.upColor,
       wickDownColor: CHART_COLORS.downColor,
     });
+
     candleSeriesRef.current = candleSeries;
     
     // Create line series (hidden by default)
@@ -252,15 +264,28 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
     });
     
     // Double-click to reset view
-    mainChartRef.current.addEventListener('dblclick', () => {
+    const handleDblClick = () => {
       chart.timeScale().fitContent();
-    });
+    };
+
+    mainChartRef.current.addEventListener('dblclick', handleDblClick);
     
     setIsInitialized(true);
     onReady?.();
     
     console.log('Main chart initialized');
-  }, [mainChartHeight, onReady, setCrosshair]);
+    
+    return () => {
+      chart.remove();
+      mainChartRef.current?.removeEventListener('dblclick', handleDblClick);
+      chartRef.current = null;
+      candleSeriesRef.current = null;
+      lineSeriesRef.current = null;
+      areaSeriesRef.current = null;
+      volumeSeriesRef.current = null;
+      resizeObserverRef.current?.disconnect();
+    };
+  }, [onReady, setCrosshair]);
   
   // ==========================================================================
   // Update Chart Type
@@ -314,15 +339,16 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
     volumeSeriesRef.current.applyOptions({ visible: showVolume });
   }, [showVolume]);
   
-  // ==========================================================================
-  // Update Chart Data
-  // ==========================================================================
-  
-  const updateChartData = useCallback(() => {
-    if (!isInitialized || klines.length === 0) return;
+  useEffect(() => {
+    if (!isInitialized || !candleSeriesRef.current || klines.length === 0) return;
     
-    // Prepare candle data
-    const candleData: CandlestickData[] = klines.map(k => ({
+    // Prevent redundant setData calls
+    const key = `${symbol}-${timeframe}-${klines[0].time}`;
+    if (dataLoadedForRef.current === key) return;
+    
+    const normalizedData = klines.map(k => normalizeKline(k, false));
+    
+    const candleData: CandlestickData[] = normalizedData.map(k => ({
       time: k.time as Time,
       open: k.open,
       high: k.high,
@@ -330,30 +356,148 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
       close: k.close,
     }));
     
-    // Prepare line/area data
-    const lineData: LineData[] = klines.map(k => ({
+    const lineData: LineData[] = normalizedData.map(k => ({
       time: k.time as Time,
       value: k.close,
     }));
     
-    // Prepare volume data
-    const volumeData: HistogramData[] = klines.map(k => ({
+    const volumeData: HistogramData[] = normalizedData.map(k => ({
       time: k.time as Time,
-      value: k.volume,
+      value: k.volume || 0,
       color: k.close >= k.open ? CHART_COLORS.volumeUp : CHART_COLORS.volumeDown,
     }));
     
-    // Update series
     candleSeriesRef.current?.setData(candleData);
     lineSeriesRef.current?.setData(lineData);
     areaSeriesRef.current?.setData(lineData);
     volumeSeriesRef.current?.setData(volumeData);
     
-    // Fit content on initial load
-    if (klines.length > 0) {
+    // Detect if this is a new symbol/timeframe (not just initial load)
+    const isNewData = dataLoadedForRef.current !== null && 
+      !dataLoadedForRef.current.startsWith(`${symbol}-${timeframe}-`);
+    
+    console.log('Price scale reset check:', { 
+      isNewData, 
+      hasInitialFit: hasInitialFitRef.current,
+      prevKey: dataLoadedForRef.current,
+      newKey: key 
+    });
+    
+    if (!hasInitialFitRef.current || isNewData) {
+      hasInitialFitRef.current = true;
+      
+      // Fit time scale
       chartRef.current?.timeScale().fitContent();
+      
+      // Force price scale to recalculate by toggling autoScale
+      if (candleSeriesRef.current) {
+        const priceScale = candleSeriesRef.current.priceScale();
+        priceScale.applyOptions({ autoScale: false });
+        setTimeout(() => {
+          priceScale.applyOptions({ autoScale: true });
+          chartRef.current?.timeScale().fitContent();
+        }, 50);
+      }
+      
+      console.log('Price scale reset triggered for', symbol);
+    }
+    
+    dataLoadedForRef.current = key;
+    console.log('Data loaded:', normalizedData.length, 'candles for', symbol, timeframe);
+  }, [isInitialized, klines.length === 0 ? 0 : klines[0].time, symbol, timeframe]);
+  
+  // Expose debug state
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.__CHART_DEBUG__ = {
+        getCandles: () => klines,
+        getSeries: () => candleSeriesRef.current,
+        getLastCandle: () => klines[klines.length - 1],
+        getCandleCount: () => klines.length,
+        isInitialized: () => isInitialized,
+        triggerUpdate: (candle: NormalizedKline) => {
+          if (candleSeriesRef.current) {
+            const time = candle.time as Time;
+            candleSeriesRef.current.update({
+              time,
+              open: candle.open,
+              high: candle.high,
+              low: candle.low,
+              close: candle.close,
+            });
+          }
+        },
+        forceSetData: () => {
+          if (candleSeriesRef.current && klines.length > 0) {
+            const normalizedData = klines.map(k => normalizeKline(k, false));
+            const candleData: CandlestickData[] = normalizedData.map(k => ({
+              time: k.time as Time,
+              open: k.open,
+              high: k.high,
+              low: k.low,
+              close: k.close,
+            }));
+            candleSeriesRef.current.setData(candleData);
+            console.log('Force setData called');
+          }
+        }
+      };
     }
   }, [isInitialized, klines]);
+  
+  const debugUpdate = useCallback((series: ISeriesApi<any>, data: any) => {
+    updateCountRef.current++;
+    const now = Date.now();
+    const delta = now - lastUpdateTimeRef.current;
+    lastUpdateTimeRef.current = now;
+    
+    console.log(`Update #${updateCountRef.current} (+${delta}ms):`, {
+      time: data.time,
+      type: typeof data.open,
+      o: data.open,
+      h: data.high,
+      l: data.low,
+      c: data.close,
+    });
+    
+    if (typeof data.open === 'string') console.error('OPEN IS STRING!');
+    if (data.high < data.low) console.error('HIGH < LOW!');
+    if (data.time < 1600000000) console.error('TIME TOO SMALL - needs to be in seconds!');
+    
+    series.update(data);
+  }, []);
+
+  const handleRealtimeUpdate = useCallback((kline: NormalizedKline) => {
+    if (!candleSeriesRef.current) return;
+    
+    const time = kline.time as Time;
+    
+    const candlePoint: CandlestickData = {
+      time,
+      open: kline.open,
+      high: kline.high,
+      low: kline.low,
+      close: kline.close,
+    };
+    
+    const linePoint: LineData = {
+      time,
+      value: kline.close,
+    };
+    
+    const volumePoint: HistogramData = {
+      time,
+      value: kline.volume || 0,
+      color: kline.close >= kline.open ? CHART_COLORS.volumeUp : CHART_COLORS.volumeDown,
+    };
+    
+    if (candleSeriesRef.current) debugUpdate(candleSeriesRef.current, candlePoint);
+    if (lineSeriesRef.current) debugUpdate(lineSeriesRef.current, linePoint);
+    if (areaSeriesRef.current) debugUpdate(areaSeriesRef.current, linePoint);
+    if (volumeSeriesRef.current) debugUpdate(volumeSeriesRef.current, volumePoint);
+  }, [debugUpdate]);
+
+  useRealtimeKlines(symbol, timeframe, handleRealtimeUpdate);
   
   // ==========================================================================
   // Update Overlay Indicators
@@ -687,10 +831,13 @@ export const ChartContainer: React.FC<ChartContainerProps> = ({
     updateVolumeVisibility();
   }, [updateVolumeVisibility]);
   
-  // Update chart data
+  // Reset tracking refs when klines are cleared (symbol/timeframe change)
   useEffect(() => {
-    updateChartData();
-  }, [updateChartData]);
+    if (klines.length === 0) {
+      lastCandleTimeRef.current = 0;
+      hasInitialFitRef.current = false;
+    }
+  }, [klines.length]);
   
   // Update overlay indicators
   useEffect(() => {
