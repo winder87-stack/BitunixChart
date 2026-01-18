@@ -629,3 +629,612 @@ export function areAllBandsBearish(quadData: QuadStochasticData): boolean {
     snapshot.slow.k < snapshot.slow.d
   );
 }
+
+// =============================================================================
+// PART 4: Quad Rotation Detection (Super Signal)
+// =============================================================================
+
+export type QuadRotationStrength = 'EXTREME' | 'STRONG' | 'MODERATE' | 'NONE';
+
+export interface QuadRotationResult {
+  isQuadOversold: boolean;
+  isQuadOverbought: boolean;
+  strength: QuadRotationStrength;
+  avgKValue: number;
+}
+
+export function detectQuadRotation(
+  quadData: QuadStochasticData,
+  config: SignalConfig = DEFAULT_SIGNAL_CONFIG
+): QuadRotationResult {
+  const snapshot = getLatestQuadSnapshot(quadData);
+  
+  if (!snapshot) {
+    return { isQuadOversold: false, isQuadOverbought: false, strength: 'NONE', avgKValue: 50 };
+  }
+
+  const kValues = [snapshot.fast.k, snapshot.standard.k, snapshot.medium.k, snapshot.slow.k];
+  const avgK = kValues.reduce((a, b) => a + b, 0) / 4;
+
+  const allOversold = kValues.every(k => k <= config.oversoldLevel);
+  const allOverbought = kValues.every(k => k >= config.overboughtLevel);
+
+  let strength: QuadRotationStrength = 'NONE';
+
+  if (allOversold) {
+    if (kValues.every(k => k <= 10)) {
+      strength = 'EXTREME';
+    } else if (kValues.every(k => k <= 15)) {
+      strength = 'STRONG';
+    } else {
+      strength = 'MODERATE';
+    }
+  } else if (allOverbought) {
+    if (kValues.every(k => k >= 90)) {
+      strength = 'EXTREME';
+    } else if (kValues.every(k => k >= 85)) {
+      strength = 'STRONG';
+    } else {
+      strength = 'MODERATE';
+    }
+  }
+
+  return {
+    isQuadOversold: allOversold,
+    isQuadOverbought: allOverbought,
+    strength,
+    avgKValue: avgK,
+  };
+}
+
+// =============================================================================
+// PART 5: 20/20 Flag Detection
+// =============================================================================
+
+export interface TwentyTwentyFlagResult {
+  isBearFlag: boolean;
+  isBullFlag: boolean;
+  fastK: number;
+  fastD: number;
+  slowK: number;
+  slowD: number;
+}
+
+export function detect2020Flag(
+  quadData: QuadStochasticData,
+  config: SignalConfig = DEFAULT_SIGNAL_CONFIG
+): TwentyTwentyFlagResult {
+  const snapshot = getLatestQuadSnapshot(quadData);
+
+  if (!snapshot) {
+    return { isBearFlag: false, isBullFlag: false, fastK: 50, fastD: 50, slowK: 50, slowD: 50 };
+  }
+
+  const { fast, slow } = snapshot;
+
+  const isBearFlag = fast.k >= config.overboughtLevel && slow.k <= config.oversoldLevel;
+  const isBullFlag = fast.k <= config.oversoldLevel && slow.k >= config.overboughtLevel;
+
+  return {
+    isBearFlag,
+    isBullFlag,
+    fastK: fast.k,
+    fastD: fast.d,
+    slowK: slow.k,
+    slowD: slow.d,
+  };
+}
+
+// =============================================================================
+// PART 6: Channel Detection
+// =============================================================================
+
+export interface ChannelResult {
+  upper: number;
+  lower: number;
+  midline: number;
+  isValid: boolean;
+  touches: { upper: number; lower: number };
+  channelHeight: number;
+  channelHeightPercent: number;
+}
+
+export type ChannelPosition = 'UPPER' | 'LOWER' | 'MIDDLE' | 'OUTSIDE';
+
+export function detectChannel(
+  klines: ParsedKline[],
+  lookback: number = 50
+): ChannelResult {
+  const invalidResult: ChannelResult = {
+    upper: 0,
+    lower: 0,
+    midline: 0,
+    isValid: false,
+    touches: { upper: 0, lower: 0 },
+    channelHeight: 0,
+    channelHeightPercent: 0,
+  };
+
+  if (klines.length < lookback) {
+    return invalidResult;
+  }
+
+  const recentKlines = klines.slice(-lookback);
+  
+  const swingHighs: number[] = [];
+  const swingLows: number[] = [];
+
+  for (let i = 2; i < recentKlines.length - 2; i++) {
+    const curr = recentKlines[i];
+    const isSwingHigh = curr.high > recentKlines[i - 1].high && 
+                        curr.high > recentKlines[i - 2].high &&
+                        curr.high > recentKlines[i + 1].high && 
+                        curr.high > recentKlines[i + 2].high;
+    
+    const isSwingLow = curr.low < recentKlines[i - 1].low && 
+                       curr.low < recentKlines[i - 2].low &&
+                       curr.low < recentKlines[i + 1].low && 
+                       curr.low < recentKlines[i + 2].low;
+
+    if (isSwingHigh) swingHighs.push(curr.high);
+    if (isSwingLow) swingLows.push(curr.low);
+  }
+
+  if (swingHighs.length < 2 || swingLows.length < 2) {
+    return invalidResult;
+  }
+
+  swingHighs.sort((a, b) => b - a);
+  swingLows.sort((a, b) => a - b);
+
+  const upper = (swingHighs[0] + swingHighs[1]) / 2;
+  const lower = (swingLows[0] + swingLows[1]) / 2;
+  const midline = (upper + lower) / 2;
+  const channelHeight = upper - lower;
+  const channelHeightPercent = (channelHeight / midline) * 100;
+
+  const isValidChannel = channelHeightPercent >= 1 && channelHeightPercent <= 10;
+
+  let upperTouches = 0;
+  let lowerTouches = 0;
+  const touchThreshold = channelHeight * 0.05;
+
+  for (const k of recentKlines) {
+    if (Math.abs(k.high - upper) <= touchThreshold) upperTouches++;
+    if (Math.abs(k.low - lower) <= touchThreshold) lowerTouches++;
+  }
+
+  return {
+    upper,
+    lower,
+    midline,
+    isValid: isValidChannel,
+    touches: { upper: upperTouches, lower: lowerTouches },
+    channelHeight,
+    channelHeightPercent,
+  };
+}
+
+export function isAtChannelExtreme(
+  price: number,
+  channel: ChannelResult,
+  thresholdPercent: number = 2
+): ChannelPosition {
+  if (!channel.isValid) {
+    return 'OUTSIDE';
+  }
+
+  const threshold = channel.channelHeight * (thresholdPercent / 100);
+
+  if (price >= channel.upper - threshold) {
+    return 'UPPER';
+  }
+  if (price <= channel.lower + threshold) {
+    return 'LOWER';
+  }
+  
+  const midRange = channel.channelHeight * 0.25;
+  if (Math.abs(price - channel.midline) <= midRange) {
+    return 'MIDDLE';
+  }
+
+  return 'OUTSIDE';
+}
+
+// =============================================================================
+// PART 7: VWAP and MA Confluence
+// =============================================================================
+
+export function calculateVWAP(klines: ParsedKline[]): number {
+  if (klines.length === 0) return 0;
+
+  let cumTypicalPriceVol = 0;
+  let cumVolume = 0;
+
+  for (const k of klines) {
+    const typicalPrice = (k.high + k.low + k.close) / 3;
+    cumTypicalPriceVol += typicalPrice * k.volume;
+    cumVolume += k.volume;
+  }
+
+  return cumVolume > 0 ? cumTypicalPriceVol / cumVolume : 0;
+}
+
+export function calculateSMA(closes: number[], period: number): number {
+  if (closes.length < period) return 0;
+  const slice = closes.slice(-period);
+  return slice.reduce((a, b) => a + b, 0) / period;
+}
+
+export function checkVwapConfluence(
+  price: number,
+  vwap: number,
+  thresholdPercent: number = 0.5
+): boolean {
+  if (vwap === 0) return false;
+  const threshold = vwap * (thresholdPercent / 100);
+  return Math.abs(price - vwap) <= threshold;
+}
+
+export function checkMAConfluence(
+  price: number,
+  ma20: number,
+  ma50: number,
+  signalType: 'LONG' | 'SHORT'
+): boolean {
+  if (ma20 === 0 || ma50 === 0) return false;
+
+  if (signalType === 'LONG') {
+    return ma20 > ma50 || price > ma20;
+  } else {
+    return ma20 < ma50 || price < ma20;
+  }
+}
+
+export function checkVolumeSpike(klines: ParsedKline[], multiplier: number = 1.5): boolean {
+  if (klines.length < 21) return false;
+
+  const recentVolumes = klines.slice(-21, -1).map(k => k.volume);
+  const avgVolume = recentVolumes.reduce((a, b) => a + b, 0) / 20;
+  const currentVolume = klines[klines.length - 1].volume;
+
+  return currentVolume > avgVolume * multiplier;
+}
+
+// =============================================================================
+// PART 8: Signal Scoring
+// =============================================================================
+
+export interface SignalFactors {
+  divergenceAngle: number | null;
+  hasQuadRotation: boolean;
+  quadRotationStrength: QuadRotationStrength;
+  isAtChannelExtreme: boolean;
+  has2020Flag: boolean;
+  hasVwapConfluence: boolean;
+  hasMAConfluence: boolean;
+  hasVolumeSpike: boolean;
+  hasHTFAlignment: boolean;
+}
+
+export type SignalStrengthLevel = 'SUPER' | 'STRONG' | 'MODERATE' | 'WEAK';
+
+export function calculateSignalStrength(factors: SignalFactors): {
+  strength: SignalStrengthLevel;
+  score: number;
+} {
+  let score = 0;
+
+  if (factors.divergenceAngle !== null) {
+    if (factors.divergenceAngle >= 15) score += 3;
+    else if (factors.divergenceAngle >= 10) score += 2;
+    else if (factors.divergenceAngle >= 7) score += 1;
+  }
+
+  if (factors.hasQuadRotation) {
+    if (factors.quadRotationStrength === 'EXTREME') score += 5;
+    else if (factors.quadRotationStrength === 'STRONG') score += 4;
+    else score += 3;
+  }
+
+  if (factors.isAtChannelExtreme) score += 2;
+  if (factors.has2020Flag) score += 2;
+  if (factors.hasVwapConfluence) score += 1;
+  if (factors.hasMAConfluence) score += 1;
+  if (factors.hasVolumeSpike) score += 1;
+  if (factors.hasHTFAlignment) score += 1;
+
+  let strength: SignalStrengthLevel;
+  if (score >= 7) strength = 'SUPER';
+  else if (score >= 5) strength = 'STRONG';
+  else if (score >= 3) strength = 'MODERATE';
+  else strength = 'WEAK';
+
+  return { strength, score };
+}
+
+export function shouldTakeSignal(
+  strength: SignalStrengthLevel,
+  hasQuadRotation: boolean,
+  minStrength: SignalStrengthLevel = 'MODERATE'
+): boolean {
+  if (hasQuadRotation) return true;
+
+  const strengthOrder: SignalStrengthLevel[] = ['WEAK', 'MODERATE', 'STRONG', 'SUPER'];
+  const currentIdx = strengthOrder.indexOf(strength);
+  const minIdx = strengthOrder.indexOf(minStrength);
+
+  return currentIdx >= minIdx;
+}
+
+// =============================================================================
+// PART 9: Entry/Exit Calculation
+// =============================================================================
+
+export interface EntryExitLevels {
+  entryPrice: number;
+  stopLoss: number;
+  target1: number;
+  target2: number;
+  target3: number;
+  riskRewardRatio: number;
+  riskAmount: number;
+  rewardAmount: number;
+}
+
+export function calculateEntryExit(
+  klines: ParsedKline[],
+  signalType: 'LONG' | 'SHORT',
+  channel: ChannelResult | null,
+  config: SignalConfig = DEFAULT_SIGNAL_CONFIG
+): EntryExitLevels {
+  const latest = klines[klines.length - 1];
+  const entryPrice = latest.close;
+
+  let recentSwingLow = Infinity;
+  let recentSwingHigh = -Infinity;
+  const lookback = Math.min(20, klines.length);
+
+  for (let i = klines.length - lookback; i < klines.length; i++) {
+    if (klines[i].low < recentSwingLow) recentSwingLow = klines[i].low;
+    if (klines[i].high > recentSwingHigh) recentSwingHigh = klines[i].high;
+  }
+
+  let stopLoss: number;
+  let target1: number;
+  let target2: number;
+  let target3: number;
+
+  if (signalType === 'LONG') {
+    const buffer = entryPrice * (config.stopLossBuffer / 100);
+    stopLoss = Math.min(recentSwingLow - buffer, entryPrice * 0.99);
+
+    target1 = entryPrice * (1 + config.target1Percent / 100);
+    target2 = channel?.isValid ? channel.upper : entryPrice * (1 + config.target2Percent / 100);
+    target3 = entryPrice * (1 + config.target3Percent / 100);
+  } else {
+    const buffer = entryPrice * (config.stopLossBuffer / 100);
+    stopLoss = Math.max(recentSwingHigh + buffer, entryPrice * 1.01);
+
+    target1 = entryPrice * (1 - config.target1Percent / 100);
+    target2 = channel?.isValid ? channel.lower : entryPrice * (1 - config.target2Percent / 100);
+    target3 = entryPrice * (1 - config.target3Percent / 100);
+  }
+
+  const riskAmount = Math.abs(entryPrice - stopLoss);
+  const rewardAmount = Math.abs(target1 - entryPrice);
+  const riskRewardRatio = riskAmount > 0 ? rewardAmount / riskAmount : 0;
+
+  return {
+    entryPrice,
+    stopLoss,
+    target1,
+    target2,
+    target3,
+    riskRewardRatio,
+    riskAmount,
+    rewardAmount,
+  };
+}
+
+export function generateSignalId(): string {
+  const timestamp = Date.now().toString(36);
+  const random = Math.random().toString(36).substring(2, 10);
+  return `sig_${timestamp}_${random}`;
+}
+
+// =============================================================================
+// PART 10: Main Signal Generator
+// =============================================================================
+
+import type {
+  QuadSignal,
+  ConfluenceFlags,
+  QuadStochasticSnapshot,
+} from '../../types/quadStochastic';
+
+export interface MAData {
+  ma20: number;
+  ma50: number;
+}
+
+export interface SignalGenerationResult {
+  signals: QuadSignal[];
+  quadData: QuadStochasticData;
+  maData: MAData;
+  channel: ChannelResult;
+  vwap: number;
+  quadRotation: QuadRotationResult;
+  flag2020: TwentyTwentyFlagResult;
+}
+
+export function generateSignals(
+  symbol: string,
+  klines: ParsedKline[],
+  quadData: QuadStochasticData,
+  maData: MAData,
+  vwap: number,
+  channel: ChannelResult,
+  config: SignalConfig = DEFAULT_SIGNAL_CONFIG
+): QuadSignal[] {
+  const signals: QuadSignal[] = [];
+
+  if (klines.length < 60) {
+    return signals;
+  }
+
+  const snapshot = getLatestQuadSnapshot(quadData);
+  if (!snapshot) {
+    return signals;
+  }
+
+  const currentPrice = klines[klines.length - 1].close;
+  const quadRotation = detectQuadRotation(quadData, config);
+  const flag2020 = detect2020Flag(quadData, config);
+  const divergences = detectQuadDivergences(klines, quadData, config);
+
+  const hasVolumeSpike = checkVolumeSpike(klines);
+  const channelPos = isAtChannelExtreme(currentPrice, channel);
+  const htfAligned = snapshot.slow.k > snapshot.slow.d;
+
+  const potentialSignals: Array<{ type: 'LONG' | 'SHORT'; reason: string; divergence: DivergenceDetails | null }> = [];
+
+  if (quadRotation.isQuadOversold && areAllBandsBullish(quadData)) {
+    potentialSignals.push({ type: 'LONG', reason: 'Quad oversold rotation', divergence: null });
+  }
+  if (quadRotation.isQuadOverbought && areAllBandsBearish(quadData)) {
+    potentialSignals.push({ type: 'SHORT', reason: 'Quad overbought rotation', divergence: null });
+  }
+
+  for (const div of divergences) {
+    if (isDivergenceBullish(div.type) && !potentialSignals.some(s => s.type === 'LONG')) {
+      potentialSignals.push({ type: 'LONG', reason: `${div.type} divergence on ${div.band}`, divergence: div });
+    }
+    if (isDivergenceBearish(div.type) && !potentialSignals.some(s => s.type === 'SHORT')) {
+      potentialSignals.push({ type: 'SHORT', reason: `${div.type} divergence on ${div.band}`, divergence: div });
+    }
+  }
+
+  if (flag2020.isBullFlag && !potentialSignals.some(s => s.type === 'LONG')) {
+    potentialSignals.push({ type: 'LONG', reason: '20/20 Bull Flag', divergence: null });
+  }
+  if (flag2020.isBearFlag && !potentialSignals.some(s => s.type === 'SHORT')) {
+    potentialSignals.push({ type: 'SHORT', reason: '20/20 Bear Flag', divergence: null });
+  }
+
+  for (const potential of potentialSignals) {
+    const isLong = potential.type === 'LONG';
+
+    const factors: SignalFactors = {
+      divergenceAngle: potential.divergence?.angle ?? null,
+      hasQuadRotation: isLong ? quadRotation.isQuadOversold : quadRotation.isQuadOverbought,
+      quadRotationStrength: quadRotation.strength,
+      isAtChannelExtreme: (isLong && channelPos === 'LOWER') || (!isLong && channelPos === 'UPPER'),
+      has2020Flag: isLong ? flag2020.isBullFlag : flag2020.isBearFlag,
+      hasVwapConfluence: checkVwapConfluence(currentPrice, vwap),
+      hasMAConfluence: checkMAConfluence(currentPrice, maData.ma20, maData.ma50, potential.type),
+      hasVolumeSpike: hasVolumeSpike,
+      hasHTFAlignment: isLong ? htfAligned : !htfAligned,
+    };
+
+    const { strength, score } = calculateSignalStrength(factors);
+
+    if (!shouldTakeSignal(strength, factors.hasQuadRotation, config.minNotificationStrength as SignalStrengthLevel)) {
+      continue;
+    }
+
+    const levels = calculateEntryExit(klines, potential.type, channel, config);
+
+    if (levels.riskRewardRatio < 1.5 && !factors.hasQuadRotation) {
+      continue;
+    }
+
+    const confluence: ConfluenceFlags = {
+      quadRotation: factors.hasQuadRotation,
+      channelExtreme: factors.isAtChannelExtreme,
+      twentyTwentyFlag: factors.has2020Flag,
+      vwapConfluence: factors.hasVwapConfluence,
+      maConfluence: factors.hasMAConfluence,
+      volumeSpike: factors.hasVolumeSpike,
+      htfAlignment: factors.hasHTFAlignment,
+    };
+
+    const stochStates: QuadStochasticSnapshot = {
+      fast: { k: snapshot.fast.k, d: snapshot.fast.d },
+      standard: { k: snapshot.standard.k, d: snapshot.standard.d },
+      medium: { k: snapshot.medium.k, d: snapshot.medium.d },
+      slow: { k: snapshot.slow.k, d: snapshot.slow.d },
+    };
+
+    let positionSize = config.defaultPositionSize;
+    if (strength === 'SUPER') positionSize = config.maxPositionSize;
+    else if (strength === 'STRONG') positionSize = config.defaultPositionSize * 1.5;
+    positionSize = Math.min(positionSize, config.maxPositionSize);
+
+    const signal: QuadSignal = {
+      id: generateSignalId(),
+      timestamp: Date.now(),
+      symbol,
+      type: potential.type,
+      strength: strength as 'WEAK' | 'MODERATE' | 'STRONG' | 'SUPER',
+      entryPrice: levels.entryPrice,
+      stopLoss: levels.stopLoss,
+      target1: levels.target1,
+      target2: levels.target2,
+      target3: levels.target3,
+      divergence: potential.divergence,
+      confluence,
+      confluenceScore: score,
+      stochStates,
+      status: 'PENDING',
+      riskRewardRatio: levels.riskRewardRatio,
+      positionSize,
+      pnlPercent: 0,
+      pnlAmount: 0,
+      actualEntry: null,
+      actualExit: null,
+      entryTime: null,
+      exitTime: null,
+      notes: potential.reason,
+    };
+
+    signals.push(signal);
+  }
+
+  signals.sort((a, b) => {
+    const strengthOrder = { SUPER: 0, STRONG: 1, MODERATE: 2, WEAK: 3 };
+    return strengthOrder[a.strength] - strengthOrder[b.strength];
+  });
+
+  return signals.slice(0, 3);
+}
+
+export function calculateQuadStochSignals(
+  symbol: string,
+  klines: ParsedKline[],
+  config: SignalConfig = DEFAULT_SIGNAL_CONFIG
+): SignalGenerationResult {
+  const quadData = calculateQuadStochastic(klines);
+
+  const closes = klines.map(k => k.close);
+  const ma20 = calculateSMA(closes, 20);
+  const ma50 = calculateSMA(closes, 50);
+  const maData: MAData = { ma20, ma50 };
+
+  const vwap = calculateVWAP(klines);
+  const channel = detectChannel(klines, 50);
+  const quadRotation = detectQuadRotation(quadData, config);
+  const flag2020 = detect2020Flag(quadData, config);
+
+  const signals = generateSignals(symbol, klines, quadData, maData, vwap, channel, config);
+
+  return {
+    signals,
+    quadData,
+    maData,
+    channel,
+    vwap,
+    quadRotation,
+    flag2020,
+  };
+}
