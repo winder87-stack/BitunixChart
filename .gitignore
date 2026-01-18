@@ -19,3 +19,7 @@ dist_electron/
 *.snap
 *.rpm
 *.dmg
+temp_deb/
+temp_deb_verify/
+.opencode/
+memories/
