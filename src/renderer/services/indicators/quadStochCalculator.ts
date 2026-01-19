@@ -791,7 +791,7 @@ export function detectChannel(
   const lower = (swingLows[0] + swingLows[1]) / 2;
   const midline = (upper + lower) / 2;
   const channelHeight = upper - lower;
-  const channelHeightPercent = (channelHeight / midline) * 100;
+  const channelHeightPercent = midline > 0 ? (channelHeight / midline) * 100 : 0;
 
   const isValidChannel = channelHeightPercent >= 1 && channelHeightPercent <= 10;
 

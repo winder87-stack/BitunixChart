@@ -12,9 +12,10 @@ import { getIndicatorDefinition } from '../../services/indicators/definitions';
 import { IndicatorList } from './IndicatorList';
 import { IndicatorSettings } from './IndicatorSettings';
 import { SignalPanel } from '../SignalPanel';
+import { QuadStochDebug } from '../debug/QuadStochDebug';
 import { ErrorBoundary } from '../ErrorBoundary';
 
-type SidebarTab = 'indicators' | 'signals';
+type SidebarTab = 'indicators' | 'signals' | 'debug';
 
 export const Sidebar: React.FC = () => {
   const { selectedIndicatorId, getIndicator, selectIndicator } = useIndicatorStore();
@@ -60,6 +61,16 @@ export const Sidebar: React.FC = () => {
         >
           Signals
         </button>
+        <button
+          onClick={() => setActiveTab('debug')}
+          className={`flex-1 py-3 text-sm font-medium transition-colors ${
+            activeTab === 'debug' 
+              ? 'text-[#2962ff] border-b-2 border-[#2962ff]' 
+              : 'text-[#787b86] hover:text-[#d1d4dc]'
+          }`}
+        >
+          Debug
+        </button>
       </div>
 
       <div className="flex-1 overflow-hidden">
@@ -67,9 +78,15 @@ export const Sidebar: React.FC = () => {
           <ErrorBoundary fallbackTitle="Indicator List Error">
             <IndicatorList />
           </ErrorBoundary>
-        ) : (
+        ) : activeTab === 'signals' ? (
           <ErrorBoundary fallbackTitle="Signal Panel Error">
             <SignalPanel />
+          </ErrorBoundary>
+        ) : (
+          <ErrorBoundary fallbackTitle="Debug Panel Error">
+            <div className="h-full overflow-y-auto">
+              <QuadStochDebug />
+            </div>
           </ErrorBoundary>
         )}
       </div>

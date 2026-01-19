@@ -9,8 +9,8 @@ import type { SignalGenerationResult } from '../services/indicators/quadStochCal
 // =============================================================================
 
 interface WorkerRequest {
-  resolve: (value: any) => void;
-  reject: (reason?: any) => void;
+  resolve: (value: unknown) => void;
+  reject: (reason?: Error) => void;
   timeout: NodeJS.Timeout;
 }
 
@@ -75,7 +75,7 @@ export function useQuadStochWorker() {
   }, []);
   
   // Request function with timeout
-  const request = useCallback(<T = any>(type: string, payload: any, timeoutMs = 10000): Promise<T> => {
+  const request = useCallback(<T = unknown>(type: string, payload: unknown, timeoutMs = 10000): Promise<T> => {
     return new Promise((resolve, reject) => {
       if (!workerRef.current || !isReady) {
         reject(new Error('Worker not ready'));
@@ -88,7 +88,11 @@ export function useQuadStochWorker() {
         reject(new Error(`Worker request timeout (${type})`));
       }, timeoutMs);
       
-      pendingRequests.current.set(requestId, { resolve, reject, timeout });
+      pendingRequests.current.set(requestId, { 
+        resolve: resolve as (value: unknown) => void, 
+        reject, 
+        timeout 
+      });
       
       workerRef.current.postMessage({ type, payload, requestId });
     });

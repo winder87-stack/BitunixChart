@@ -21,7 +21,7 @@ import type { Kline } from '../types';
 // =============================================================================
 
 const DEFAULT_SYMBOL = 'BTCUSDT';
-const DEFAULT_TIMEFRAME: Timeframe = '1h';
+const DEFAULT_TIMEFRAME: Timeframe = '3m';
 const DEFAULT_KLINE_LIMIT = 500;
 
 // =============================================================================

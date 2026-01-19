@@ -15,7 +15,7 @@ export type WorkerMessageType =
 
 export interface WorkerMessage {
   type: WorkerMessageType;
-  payload?: any;
+  payload?: unknown;
   requestId?: string;
 }
 

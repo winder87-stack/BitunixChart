@@ -70,8 +70,8 @@ const FullscreenIcon = () => (
 // Constants
 // =============================================================================
 
-const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1h', '4h', '1d', '1w'];
-const EXTRA_TIMEFRAMES: Timeframe[] = ['3m', '30m', '2h', '6h', '12h', '1M'];
+const TIMEFRAMES: Timeframe[] = ['1m', '3m', '5m', '15m', '1h', '4h', '1d', '1w'];
+const EXTRA_TIMEFRAMES: Timeframe[] = ['30m', '2h', '6h', '12h', '1M'];
 
 // =============================================================================
 // Component
