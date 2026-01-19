@@ -1,7 +1,13 @@
-import { Stochastic, SMA } from 'technicalindicators';
+import { Stochastic, SMA, ATR } from 'technicalindicators';
 import type { ParsedKline } from '../../types/bitunix';
+import { 
+  calculateConfirmationScore, 
+  getRequiredConfirmations, 
+  getOptionalConfirmations 
+} from '../signals/confirmations';
+import type { TradeSignal, SignalConfirmations } from '../../types/signals';
 import {
-  STOCHASTIC_BANDS,
+  getStochasticBands,
   type StochasticBandKey,
   type StochasticValue,
   type QuadStochasticData,
@@ -120,8 +126,8 @@ export function calculateSingleStochastic(
   }
 }
 
-export function calculateQuadStochastic(klines: ParsedKline[]): QuadStochasticData {
-  const { FAST, STANDARD, MEDIUM, SLOW } = STOCHASTIC_BANDS;
+export function calculateQuadStochastic(klines: ParsedKline[], interval: string = '1m'): QuadStochasticData {
+  const { FAST, STANDARD, MEDIUM, SLOW } = getStochasticBands(interval);
 
   const fast = calculateSingleStochastic(klines, FAST.kPeriod, FAST.dPeriod, FAST.smooth);
   const standard = calculateSingleStochastic(klines, STANDARD.kPeriod, STANDARD.dPeriod, STANDARD.smooth);
@@ -1048,7 +1054,6 @@ export function generateSignalId(): string {
 // =============================================================================
 
 import type {
-  QuadSignal,
   ConfluenceFlags,
   QuadStochasticSnapshot,
 } from '../../types/quadStochastic';
@@ -1059,13 +1064,54 @@ export interface MAData {
 }
 
 export interface SignalGenerationResult {
-  signals: QuadSignal[];
+  signals: TradeSignal[];
   quadData: QuadStochasticData;
   maData: MAData;
   channel: ChannelResult;
   vwap: number;
   quadRotation: QuadRotationResult;
   flag2020: TwentyTwentyFlagResult;
+}
+
+export function calculateATR(
+  klines: ParsedKline[],
+  period: number = 14
+): number[] {
+  if (klines.length < period + 1) return [];
+
+  const highs = klines.map(k => k.high);
+  const lows = klines.map(k => k.low);
+  const closes = klines.map(k => k.close);
+
+  return ATR.calculate({
+    high: highs,
+    low: lows,
+    close: closes,
+    period,
+  });
+}
+
+export function calculateStopLoss(
+  klines: ParsedKline[],
+  type: 'LONG' | 'SHORT',
+  atr: number
+): number {
+  const currentPrice = klines[klines.length - 1].close;
+  const recentKlines = klines.slice(-10);
+
+  if (type === 'LONG') {
+    const lowestLow = Math.min(...recentKlines.map(k => k.low));
+    const atrStop = lowestLow - (atr * 0.5);
+    const maxStop = currentPrice * 0.98;
+    const minStop = currentPrice * 0.995;
+    return Math.min(Math.max(atrStop, maxStop), minStop);
+  } else {
+    const highestHigh = Math.max(...recentKlines.map(k => k.high));
+    const atrStop = highestHigh + (atr * 0.5);
+    const maxStop = currentPrice * 1.02;
+    const minStop = currentPrice * 1.005;
+    return Math.max(Math.min(atrStop, maxStop), minStop);
+  }
 }
 
 export function generateSignals(
@@ -1076,8 +1122,8 @@ export function generateSignals(
   vwap: number,
   channel: ChannelResult,
   config: SignalConfig = DEFAULT_SIGNAL_CONFIG
-): QuadSignal[] {
-  const signals: QuadSignal[] = [];
+): TradeSignal[] {
+  const signals: TradeSignal[] = [];
 
   if (klines.length < 60) {
     return signals;
@@ -1096,6 +1142,9 @@ export function generateSignals(
   const hasVolumeSpike = checkVolumeSpike(klines);
   const channelPos = isAtChannelExtreme(currentPrice, channel);
   const htfAligned = snapshot.slow.k > snapshot.slow.d;
+
+  const atrValues = calculateATR(klines, 14);
+  const currentATR = atrValues.length > 0 ? atrValues[atrValues.length - 1] : currentPrice * 0.01;
 
   const potentialSignals: Array<{ type: 'LONG' | 'SHORT'; reason: string; divergence: DivergenceDetails | null }> = [];
 
@@ -1137,13 +1186,52 @@ export function generateSignals(
       hasHTFAlignment: isLong ? htfAligned : !htfAligned,
     };
 
-    const { strength, score } = calculateSignalStrength(factors);
+    let { strength, score } = calculateSignalStrength(factors);
 
     if (!shouldTakeSignal(strength, factors.hasQuadRotation, config.minNotificationStrength as SignalStrengthLevel)) {
       continue;
     }
 
     const levels = calculateEntryExit(klines, potential.type, channel, config);
+    const dynamicStopLoss = calculateStopLoss(klines, potential.type, currentATR);
+
+    const tempSignal: any = {
+      action: isLong ? 'BUY' : 'SELL',
+      entryPrice: levels.entryPrice,
+      divergence: potential.divergence,
+    };
+
+    const confirmationResult = calculateConfirmationScore(
+      tempSignal, 
+      klines, 
+      quadData, 
+      { 
+        ma20: new Array(klines.length).fill(maData.ma20), 
+        ma50: new Array(klines.length).fill(maData.ma50), 
+        vwap: new Array(klines.length).fill(vwap) 
+      }, 
+      channel
+    );
+
+    const confirmationPercentage = (confirmationResult.score / confirmationResult.maxScore) * 100;
+
+    if (confirmationPercentage >= 85) {
+      if (strength === 'WEAK') strength = 'MODERATE';
+      else if (strength === 'MODERATE') strength = 'STRONG';
+      else if (strength === 'STRONG') strength = 'SUPER';
+    } else if (confirmationPercentage < 50) {
+      if (strength === 'SUPER') strength = 'STRONG';
+      else if (strength === 'STRONG') strength = 'MODERATE';
+      else if (strength === 'MODERATE') strength = 'WEAK';
+    }
+
+    if (confirmationPercentage < 40 && !factors.hasQuadRotation) {
+      continue;
+    }
+
+    if (strength === 'SUPER' && confirmationPercentage < 70) {
+      strength = 'STRONG';
+    }
 
     if (levels.riskRewardRatio < 1.5 && !factors.hasQuadRotation) {
       continue;
@@ -1171,20 +1259,65 @@ export function generateSignals(
     else if (strength === 'STRONG') positionSize = config.defaultPositionSize * 1.5;
     positionSize = Math.min(positionSize, config.maxPositionSize);
 
-    const signal: QuadSignal = {
+    console.log(`Signal Generated [${symbol}]: ${strength} (${confirmationPercentage.toFixed(1)}% conf)`);
+
+    const requiredConf = getRequiredConfirmations().map(c => c.id);
+    const optionalConf = getOptionalConfirmations().map(c => c.id);
+
+    const confirmations: SignalConfirmations = {
+      required: requiredConf,
+      optional: optionalConf,
+      achieved: confirmationResult.achieved
+    };
+
+    const signal: TradeSignal = {
       id: generateSignalId(),
       timestamp: Date.now(),
       symbol,
       type: potential.type,
       strength: strength as 'WEAK' | 'MODERATE' | 'STRONG' | 'SUPER',
       entryPrice: levels.entryPrice,
-      stopLoss: levels.stopLoss,
-      target1: levels.target1,
-      target2: levels.target2,
-      target3: levels.target3,
+      
       divergence: potential.divergence,
       confluence,
       confluenceScore: score,
+      
+      confirmationScore: confirmationPercentage,
+      confirmationDetails: {
+        achieved: confirmationResult.achieved,
+        missing: confirmationResult.missing,
+        score: confirmationResult.score,
+        maxScore: confirmationResult.maxScore,
+        percentage: confirmationPercentage
+      },
+
+      action: isLong ? 'BUY' : 'SELL',
+      entryType: strength === 'SUPER' ? 'MARKET' : 'LIMIT_PULLBACK',
+      validUntil: Date.now() + (15 * 60 * 1000), // 15 mins expiry
+      maxHoldTime: 60 * 60 * 1000, // 1 hour max hold
+      
+      entryZone: {
+        ideal: levels.entryPrice,
+        max: isLong ? levels.entryPrice + (currentATR * 0.5) : levels.entryPrice,
+        min: isLong ? levels.entryPrice : levels.entryPrice - (currentATR * 0.5)
+      },
+
+      targets: [
+        { price: levels.target1, percentage: 60, reason: 'resistance' },
+        { price: levels.target2, percentage: 30, reason: 'channel_bound' },
+        { price: levels.target3, percentage: 10, reason: 'fib_level' }
+      ],
+
+      stopLoss: {
+        initial: dynamicStopLoss,
+        breakeven: levels.target1,
+        trailing: {
+          enabled: true,
+          method: 'ATR',
+          value: currentATR * 1.5
+        }
+      },
+
       stochStates,
       status: 'PENDING',
       riskRewardRatio: levels.riskRewardRatio,
@@ -1196,6 +1329,10 @@ export function generateSignals(
       entryTime: null,
       exitTime: null,
       notes: potential.reason,
+      
+      confirmations,
+      candlesSinceSignal: 0,
+      avgCandleSize: currentATR
     };
 
     signals.push(signal);
@@ -1212,9 +1349,10 @@ export function generateSignals(
 export function calculateQuadStochSignals(
   symbol: string,
   klines: ParsedKline[],
-  config: SignalConfig = DEFAULT_SIGNAL_CONFIG
+  config: SignalConfig = DEFAULT_SIGNAL_CONFIG,
+  interval: string = '1m'
 ): SignalGenerationResult {
-  const quadData = calculateQuadStochastic(klines);
+  const quadData = calculateQuadStochastic(klines, interval);
 
   const closes = klines.map(k => k.close);
   const ma20 = calculateSMA(closes, 20);

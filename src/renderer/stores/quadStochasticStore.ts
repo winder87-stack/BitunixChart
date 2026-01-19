@@ -2,19 +2,20 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
 
+import type { TradeSignal } from '../types/signals';
 import type {
-  QuadSignal,
   SignalConfig,
   SignalUpdate,
   SignalStatistics,
 } from '../types/quadStochastic';
 import { DEFAULT_SIGNAL_CONFIG, isValidSignalConfig } from '../types/quadStochastic';
+import { soundManager } from '../utils/audio/soundManager';
 
 const MAX_SIGNAL_HISTORY = 100;
 
 interface QuadStochasticState {
-  signals: QuadSignal[];
-  activeSignal: QuadSignal | null;
+  signals: TradeSignal[];
+  activeSignal: TradeSignal | null;
   config: SignalConfig;
   isEnabled: boolean;
   isScanning: boolean;
@@ -23,7 +24,7 @@ interface QuadStochasticState {
 }
 
 interface QuadStochasticActions {
-  addSignal: (signal: QuadSignal) => void;
+  addSignal: (signal: TradeSignal) => void;
   updateSignal: (update: SignalUpdate) => void;
   removeSignal: (id: string) => void;
   setActiveSignal: (id: string | null) => void;
@@ -39,18 +40,18 @@ interface QuadStochasticActions {
 }
 
 interface QuadStochasticComputed {
-  getSignalById: (id: string) => QuadSignal | undefined;
-  getPendingSignals: () => QuadSignal[];
-  getActiveSignals: () => QuadSignal[];
-  getClosedSignals: () => QuadSignal[];
-  getSignalsBySymbol: (symbol: string) => QuadSignal[];
+  getSignalById: (id: string) => TradeSignal | undefined;
+  getPendingSignals: () => TradeSignal[];
+  getActiveSignals: () => TradeSignal[];
+  getClosedSignals: () => TradeSignal[];
+  getSignalsBySymbol: (symbol: string) => TradeSignal[];
   getStatistics: () => SignalStatistics;
-  getRecentSignals: (count: number) => QuadSignal[];
+  getRecentSignals: (count: number) => TradeSignal[];
 }
 
 export type QuadStochasticStore = QuadStochasticState & QuadStochasticActions & QuadStochasticComputed;
 
-function calculateStatistics(signals: QuadSignal[]): SignalStatistics {
+function calculateStatistics(signals: TradeSignal[]): SignalStatistics {
   const closedSignals = signals.filter(s => 
     s.status === 'TARGET1_HIT' || 
     s.status === 'TARGET2_HIT' || 
@@ -143,14 +144,14 @@ export const useQuadStochasticStore = create<QuadStochasticStore>()(
       lastScanTime: null,
       watchlist: ['BTCUSDT', 'ETHUSDT'],
 
-      addSignal: (signal: QuadSignal): void => {
+      addSignal: (signal: TradeSignal): void => {
         set((draft) => {
           const existingPending = draft.signals.find(
             s => s.symbol === signal.symbol && s.status === 'PENDING'
           );
           if (existingPending) {
-            const index = draft.signals.indexOf(existingPending);
-            draft.signals[index] = signal;
+            const index = draft.signals.indexOf(existingPending as any);
+            if (index !== -1) draft.signals[index] = signal;
           } else {
             draft.signals.unshift(signal);
           }
@@ -161,6 +162,13 @@ export const useQuadStochasticStore = create<QuadStochasticStore>()(
 
           if (signal.status === 'PENDING' || signal.status === 'ACTIVE') {
             draft.activeSignal = signal;
+          }
+
+          // Play sound if enabled
+          if (draft.config.enableSound) {
+            // We can't call soundManager directly inside the immer draft if it has side effects?
+            // Actually it's fine, soundManager.playSound is async and external
+            soundManager.playSound(signal.strength);
           }
         });
       },
@@ -283,21 +291,21 @@ export const useQuadStochasticStore = create<QuadStochasticStore>()(
         });
       },
 
-      getSignalById: (id: string): QuadSignal | undefined => {
+      getSignalById: (id: string): TradeSignal | undefined => {
         return get().signals.find(s => s.id === id);
       },
 
-      getPendingSignals: (): QuadSignal[] => {
+      getPendingSignals: (): TradeSignal[] => {
         return get().signals.filter(s => s.status === 'PENDING');
       },
 
-      getActiveSignals: (): QuadSignal[] => {
+      getActiveSignals: (): TradeSignal[] => {
         return get().signals.filter(s => 
           s.status === 'ACTIVE' || s.status === 'PARTIAL'
         );
       },
 
-      getClosedSignals: (): QuadSignal[] => {
+      getClosedSignals: (): TradeSignal[] => {
         return get().signals.filter(s => 
           s.status === 'TARGET1_HIT' || 
           s.status === 'TARGET2_HIT' || 
@@ -307,7 +315,7 @@ export const useQuadStochasticStore = create<QuadStochasticStore>()(
         );
       },
 
-      getSignalsBySymbol: (symbol: string): QuadSignal[] => {
+      getSignalsBySymbol: (symbol: string): TradeSignal[] => {
         const normalized = symbol.toUpperCase();
         return get().signals.filter(s => s.symbol === normalized);
       },
@@ -316,7 +324,7 @@ export const useQuadStochasticStore = create<QuadStochasticStore>()(
         return calculateStatistics(get().signals);
       },
 
-      getRecentSignals: (count: number): QuadSignal[] => {
+      getRecentSignals: (count: number): TradeSignal[] => {
         return get().signals.slice(0, count);
       },
     })),

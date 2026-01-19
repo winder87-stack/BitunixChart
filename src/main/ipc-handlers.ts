@@ -249,8 +249,10 @@ class WebSocketManager {
     if (message.op === 'pong') return;
 
     // Handle kline data
-    if (message.ch && (message.ch as string).includes('kline') && message.data) {
-      const data = message.data as Record<string, unknown>;
+    if (message.ch && (message.ch as string).includes('kline')) {
+      // DEBUG: Log actual structure to help debug undefined values
+      log.info('[WS] RAW KLINE MSG:', JSON.stringify(message).slice(0, 500));
+
       const symbol = message.symbol as string;
       const channel = message.ch as string;
       
@@ -264,33 +266,58 @@ class WebSocketManager {
       
       const interval = revMap[intervalPart] || '1m';
       const duration = this.getDuration(interval);
-      const ts = message.ts as number;
-      const openTime = Math.floor(ts / duration) * duration;
+      
+      // Extract kline data from possible locations
+      // message.data might be the kline, or message.data.k, or just message.k
+      // cast to any to allow flexible property access
+      const rootData = (message.data || message) as any;
+      const klineRaw = rootData.k || rootData.data?.k || rootData.kline || rootData.data || rootData;
 
-      if (data) {
-        const rawVolume = data.b ?? data.v ?? data.V ?? data.volume ?? data.baseVolume ?? '0';
-        const parsedVolume = String(rawVolume);
+      if (klineRaw) {
+        // Normalize fields
+        const rawOpen = klineRaw.o ?? klineRaw.open ?? klineRaw.O;
+        const rawHigh = klineRaw.h ?? klineRaw.high ?? klineRaw.H;
+        const rawLow = klineRaw.l ?? klineRaw.low ?? klineRaw.L;
+        const rawClose = klineRaw.c ?? klineRaw.close ?? klineRaw.C;
+        const rawVolume = klineRaw.v ?? klineRaw.volume ?? klineRaw.V ?? klineRaw.baseVolume ?? klineRaw.b ?? '0';
+        const rawQuoteVol = klineRaw.q ?? klineRaw.Q ?? klineRaw.quoteVolume ?? '0';
         
-        if (!data.o && !data.h && !data.l && !data.c) {
-          log.warn('[WS] Unknown kline message format:', JSON.stringify(message).slice(0, 200));
+        // Validation
+        if (rawOpen === undefined || rawHigh === undefined || rawLow === undefined || rawClose === undefined) {
+           log.warn('[WS] Invalid kline data (missing OHLC):', JSON.stringify(klineRaw));
+           return;
         }
-        
+
+        // Time handling
+        // Prefer t/T from kline, fallback to message timestamp or calculation
+        let openTime = 0;
+        if (klineRaw.t || klineRaw.T || klineRaw.startTime || klineRaw.openTime) {
+          openTime = Number(klineRaw.t || klineRaw.T || klineRaw.startTime || klineRaw.openTime);
+          // If time is in seconds (small number), convert to ms
+          if (openTime < 10000000000) openTime *= 1000; 
+        } else if (message.ts) {
+           const ts = message.ts as number;
+           openTime = Math.floor(ts / duration) * duration;
+        } else {
+           openTime = Date.now(); // Last resort
+        }
+
         const kline: KlineData = {
           openTime: openTime,
-          open: data.o as string,
-          high: data.h as string,
-          low: data.l as string,
-          close: data.c as string,
-          volume: parsedVolume,
+          open: String(rawOpen),
+          high: String(rawHigh),
+          low: String(rawLow),
+          close: String(rawClose),
+          volume: String(rawVolume),
           closeTime: openTime + duration - 1,
-          quoteVolume: (data.q ?? data.Q ?? data.quoteVolume ?? '0') as string,
+          quoteVolume: String(rawQuoteVol),
           trades: 0,
           takerBuyBaseVolume: '0',
           takerBuyQuoteVolume: '0',
         };
 
         this.sendKlineUpdate({
-          symbol: symbol.toUpperCase(),
+          symbol: symbol ? symbol.toUpperCase() : 'UNKNOWN', // Ensure symbol exists
           interval,
           kline,
           isFinal: false,

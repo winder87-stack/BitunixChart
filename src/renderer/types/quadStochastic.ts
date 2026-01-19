@@ -79,6 +79,141 @@ export const STOCHASTIC_BANDS = {
   },
 } as const;
 
+/**
+ * 3-Minute timeframe stochastic bands.
+ * Adjusted from 1M settings: periods scaled ~0.33x with minimum viable values.
+ * 
+ * FAST (5,2,2) = ~15 min of data (5 candles × 3m)
+ * STANDARD (7,3,3) = ~21 min of data
+ * MEDIUM (15,3,3) = ~45 min of data  
+ * SLOW (20,5,5) = ~60 min of data (mimics 15M alignment)
+ */
+export const STOCHASTIC_BANDS_3M = {
+  FAST: {
+    kPeriod: 5,
+    dPeriod: 2,
+    smooth: 2,
+  },
+  STANDARD: {
+    kPeriod: 7,
+    dPeriod: 3,
+    smooth: 3,
+  },
+  MEDIUM: {
+    kPeriod: 15,
+    dPeriod: 3,
+    smooth: 3,
+  },
+  SLOW: {
+    kPeriod: 20,
+    dPeriod: 5,
+    smooth: 5,
+  },
+} as const;
+
+/**
+ * 5-Minute timeframe stochastic bands.
+ * Scaled for 5M chart to maintain similar time coverage as 1M.
+ * 
+ * FAST (3,2,2) = ~15 min of data (3 candles × 5m)
+ * STANDARD (5,2,2) = ~25 min of data
+ * MEDIUM (9,3,3) = ~45 min of data
+ * SLOW (12,4,4) = ~60 min of data (mimics 15M alignment)
+ */
+export const STOCHASTIC_BANDS_5M = {
+  FAST: {
+    kPeriod: 3,
+    dPeriod: 2,
+    smooth: 2,
+  },
+  STANDARD: {
+    kPeriod: 5,
+    dPeriod: 2,
+    smooth: 2,
+  },
+  MEDIUM: {
+    kPeriod: 9,
+    dPeriod: 3,
+    smooth: 3,
+  },
+  SLOW: {
+    kPeriod: 12,
+    dPeriod: 4,
+    smooth: 4,
+  },
+} as const;
+
+/**
+ * 15-Minute timeframe stochastic bands.
+ * Scaled for 15M chart - minimal periods since each candle = 15 min.
+ * 
+ * FAST (3,2,2) = ~45 min of data (3 candles × 15m)
+ * STANDARD (4,2,2) = ~60 min of data  
+ * MEDIUM (8,3,3) = ~2 hours of data
+ * SLOW (12,4,4) = ~3 hours of data (mimics 1H alignment)
+ */
+export const STOCHASTIC_BANDS_15M = {
+  FAST: {
+    kPeriod: 3,
+    dPeriod: 2,
+    smooth: 2,
+  },
+  STANDARD: {
+    kPeriod: 4,
+    dPeriod: 2,
+    smooth: 2,
+  },
+  MEDIUM: {
+    kPeriod: 8,
+    dPeriod: 3,
+    smooth: 3,
+  },
+  SLOW: {
+    kPeriod: 12,
+    dPeriod: 4,
+    smooth: 4,
+  },
+} as const;
+
+/** Type for stochastic band configurations - structural type for flexibility */
+export interface StochasticBandsConfig {
+  readonly FAST: StochasticBandConfig;
+  readonly STANDARD: StochasticBandConfig;
+  readonly MEDIUM: StochasticBandConfig;
+  readonly SLOW: StochasticBandConfig;
+}
+
+/**
+ * Timeframe-specific stochastic band configurations.
+ * Maps interval strings to optimized stochastic settings.
+ */
+export const TIMEFRAME_CONFIGS: Record<string, StochasticBandsConfig> = {
+  '1m': STOCHASTIC_BANDS,
+  '3m': STOCHASTIC_BANDS_3M,
+  '5m': STOCHASTIC_BANDS_5M,
+  '15m': STOCHASTIC_BANDS_15M,
+};
+
+/**
+ * Get the appropriate stochastic band configuration for a given timeframe.
+ * Falls back to original 1M settings if timeframe is not found.
+ * 
+ * @param interval - The chart timeframe (e.g., '1m', '3m', '5m', '15m')
+ * @returns The stochastic band configuration for that timeframe
+ * 
+ * @example
+ * ```typescript
+ * const bands = getStochasticBands('3m');
+ * console.log(bands.FAST.kPeriod); // 5 (optimized for 3M)
+ * 
+ * const defaultBands = getStochasticBands('1h'); 
+ * console.log(defaultBands.FAST.kPeriod); // 9 (falls back to 1M)
+ * ```
+ */
+export function getStochasticBands(interval: string): StochasticBandsConfig {
+  return TIMEFRAME_CONFIGS[interval] || STOCHASTIC_BANDS;
+}
+
 /** Band identifier keys */
 export type StochasticBandKey = keyof typeof STOCHASTIC_BANDS;
 
@@ -292,8 +427,69 @@ export interface QuadSignal {
   /** Confluence flags at signal generation */
   confluence: ConfluenceFlags;
   
-  /** Total confluence score (number of true flags) */
+  /** Confluence score (number of true flags) */
   confluenceScore: number;
+
+  // === Confirmation System ===
+  
+  /** 
+   * Detailed confirmation analysis results.
+   * Includes score breakdown and lists of passed/failed checks.
+   */
+  confirmationDetails: {
+    /** List of passed confirmation IDs */
+    achieved: string[];
+    /** List of failed/missing confirmation IDs */
+    missing: string[];
+    /** Total weighted score achieved */
+    score: number;
+    /** Maximum possible score */
+    maxScore: number;
+    /** Percentage score (0-100) */
+    percentage: number;
+  };
+
+  /** Normalized confirmation score (0-100) */
+  confirmationScore: number;
+
+  // === Advanced Trade Setup ===
+  
+  /** Entry zone details */
+  entryZone?: {
+    ideal: number;
+    max: number;
+    min: number;
+  };
+
+  /** Multiple targets with position sizing */
+  smartTargets?: Array<{
+    price: number;
+    percentage: number;
+    reason: string;
+  }>;
+
+  /** Enhanced stop loss configuration */
+  stopLossConfig?: {
+    initial: number;
+    breakeven: number;
+    trailing: {
+      enabled: boolean;
+      method: 'MA20' | 'ATR' | 'PERCENT' | 'SWING';
+      value: number;
+    };
+  };
+
+  /** Signal validity expiration timestamp */
+  validUntil?: number;
+
+  /** Maximum holding time in ms */
+  maxHoldTime?: number;
+
+  /** Explicit action (BUY/SELL) */
+  action?: 'BUY' | 'SELL';
+
+  /** Entry strategy type */
+  entryType?: 'MARKET' | 'LIMIT_PULLBACK' | 'STOP_ENTRY';
   
   // === Stochastic State ===
   

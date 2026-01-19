@@ -13,6 +13,10 @@ import {
 import type { IndicatorCategory, IndicatorType } from '../../types/indicators';
 import { cn } from '../../lib/utils';
 import { Input } from '../ui/input';
+import { getAllStrategies, getStrategy } from '../../strategies';
+import { useStrategyStore } from '../../stores/strategyStore';
+import { StrategySettings } from '../strategy/StrategySettings';
+import { Settings, ChevronDown, X } from 'lucide-react';
 
 // =============================================================================
 // Icons
@@ -98,6 +102,13 @@ export const IndicatorList: React.FC = () => {
     custom: true,
   });
   
+  // Strategy state
+  const [strategiesExpanded, setStrategiesExpanded] = useState(true);
+  const [showStrategySettings, setShowStrategySettings] = useState(false);
+  const { activeStrategyId, setStrategy: setActiveStrategy, enabled, setEnabled: setStrategyEnabled } = useStrategyStore();
+  const strategies = getAllStrategies();
+  const activeStrategy = activeStrategyId ? getStrategy(activeStrategyId) : null;
+
   const { 
     activeIndicators, 
     addIndicator, 
@@ -185,12 +196,47 @@ export const IndicatorList: React.FC = () => {
             className="flex items-center w-full gap-2 p-2 text-xs font-semibold text-text-secondary uppercase tracking-wider hover:text-text-primary transition-colors"
           >
             <ChevronRightIcon expanded={expandedCategories['active']} />
-            <span>Active ({activeIndicators.length}/10)</span>
+            <span>Active ({activeIndicators.length + (enabled && activeStrategy ? 1 : 0)}/10)</span>
           </button>
           
           {expandedCategories['active'] && (
             <div className="mt-1 space-y-1">
-              {activeIndicators.length === 0 ? (
+              {/* Show active strategy first */}
+              {enabled && activeStrategy && (
+                <div className="flex items-center justify-between px-2 py-2 bg-surface rounded mb-1 group">
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <span 
+                      className="w-6 h-6 rounded flex items-center justify-center text-sm shrink-0"
+                      style={{ backgroundColor: `${activeStrategy.info.color}20`, color: activeStrategy.info.color }}
+                    >
+                      {activeStrategy.info.icon}
+                    </span>
+                    <span className="text-sm text-text-primary font-medium truncate">
+                      {activeStrategy.info.shortName || activeStrategy.info.name}
+                    </span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse shrink-0" />
+                  </div>
+                  
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => setShowStrategySettings(true)}
+                      className="p-1.5 text-text-secondary hover:text-text-primary rounded hover:bg-border"
+                      title="Settings"
+                    >
+                      <Settings size={14} />
+                    </button>
+                    <button
+                      onClick={() => setStrategyEnabled(false)}
+                      className="p-1.5 text-text-secondary hover:text-text-primary rounded hover:bg-border"
+                      title="Disable Strategy"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {activeIndicators.length === 0 && (!enabled || !activeStrategy) ? (
                 <div className="px-6 py-2 text-xs text-text-secondary italic">
                   No active indicators
                 </div>
@@ -265,6 +311,72 @@ export const IndicatorList: React.FC = () => {
 
         <div className="w-full h-px bg-border my-2" />
 
+        {/* Strategies Section */}
+        <section className="mb-2">
+          <div 
+            className="flex items-center justify-between px-2 py-2 cursor-pointer hover:bg-surface rounded transition-colors"
+            onClick={() => setStrategiesExpanded(!strategiesExpanded)}
+          >
+            <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
+              Strategies
+            </span>
+            <ChevronDown className={cn(
+              'w-4 h-4 text-text-secondary transition-transform',
+              strategiesExpanded && 'rotate-180'
+            )} />
+          </div>
+          
+          {strategiesExpanded && (
+            <div className="px-2 pb-2 space-y-1">
+              {strategies.map(strategy => (
+                <div
+                  key={strategy.info.id}
+                  onClick={() => setActiveStrategy(strategy.info.id)}
+                  className={cn(
+                    'flex items-center gap-3 px-3 py-2 rounded cursor-pointer transition-colors border',
+                    activeStrategyId === strategy.info.id 
+                      ? 'bg-accent/20 border-accent/50' 
+                      : 'border-transparent hover:bg-surface'
+                  )}
+                >
+                  <span 
+                    className="w-8 h-8 rounded flex items-center justify-center text-lg shrink-0"
+                    style={{ backgroundColor: `${strategy.info.color}20`, color: strategy.info.color }}
+                  >
+                    {strategy.info.icon}
+                  </span>
+                  
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-text-primary font-medium truncate">
+                        {strategy.info.name}
+                      </span>
+                      {activeStrategyId === strategy.info.id && enabled && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse shrink-0" />
+                      )}
+                    </div>
+                    <span className="text-[10px] text-text-secondary truncate block">
+                      {strategy.info.category} • {strategy.info.timeframes.join(', ')}
+                    </span>
+                  </div>
+                  
+                  {activeStrategyId === strategy.info.id && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowStrategySettings(true);
+                      }}
+                      className="p-1.5 rounded hover:bg-background shrink-0"
+                    >
+                      <Settings size={14} className="text-text-secondary hover:text-text-primary" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
         {/* Add Indicators Section */}
         {filteredCategories.map(cat => {
            const indicators = getFilteredIndicators(cat);
@@ -306,6 +418,11 @@ export const IndicatorList: React.FC = () => {
           );
         })}
       </div>
+
+      <StrategySettings 
+        isOpen={showStrategySettings} 
+        onClose={() => setShowStrategySettings(false)} 
+      />
     </div>
   );
 };

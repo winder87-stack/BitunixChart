@@ -8,17 +8,21 @@
 
 import React, { useState } from 'react';
 import { useIndicatorStore } from '../../stores/indicatorStore';
+import { useChartStore, selectTimeframe } from '../../stores/chartStore';
 import { getIndicatorDefinition } from '../../services/indicators/definitions';
 import { IndicatorList } from './IndicatorList';
 import { IndicatorSettings } from './IndicatorSettings';
-import { SignalPanel } from '../SignalPanel';
+import { SignalPanel } from '../signals/SignalPanel';
+import { StrategySelector } from '../strategy/StrategySelector';
+import { StrategyConfigPanel } from '../strategy/StrategyConfigPanel';
 import { QuadStochDebug } from '../debug/QuadStochDebug';
 import { ErrorBoundary } from '../ErrorBoundary';
 
-type SidebarTab = 'indicators' | 'signals' | 'debug';
+type SidebarTab = 'indicators' | 'signals' | 'strategy' | 'debug';
 
 export const Sidebar: React.FC = () => {
   const { selectedIndicatorId, getIndicator, selectIndicator } = useIndicatorStore();
+  const currentTimeframe = useChartStore(selectTimeframe);
   const [activeTab, setActiveTab] = useState<SidebarTab>('indicators');
   
   // Determine content based on selection
@@ -43,7 +47,7 @@ export const Sidebar: React.FC = () => {
       <div className="flex border-b border-[#2a2e39]">
         <button
           onClick={() => setActiveTab('indicators')}
-          className={`flex-1 py-3 text-sm font-medium transition-colors ${
+          className={`flex-1 py-3 text-xs font-medium transition-colors ${
             activeTab === 'indicators' 
               ? 'text-[#2962ff] border-b-2 border-[#2962ff]' 
               : 'text-[#787b86] hover:text-[#d1d4dc]'
@@ -53,7 +57,7 @@ export const Sidebar: React.FC = () => {
         </button>
         <button
           onClick={() => setActiveTab('signals')}
-          className={`flex-1 py-3 text-sm font-medium transition-colors ${
+          className={`flex-1 py-3 text-xs font-medium transition-colors ${
             activeTab === 'signals' 
               ? 'text-[#2962ff] border-b-2 border-[#2962ff]' 
               : 'text-[#787b86] hover:text-[#d1d4dc]'
@@ -62,8 +66,18 @@ export const Sidebar: React.FC = () => {
           Signals
         </button>
         <button
+          onClick={() => setActiveTab('strategy')}
+          className={`flex-1 py-3 text-xs font-medium transition-colors ${
+            activeTab === 'strategy' 
+              ? 'text-[#2962ff] border-b-2 border-[#2962ff]' 
+              : 'text-[#787b86] hover:text-[#d1d4dc]'
+          }`}
+        >
+          Strategy
+        </button>
+        <button
           onClick={() => setActiveTab('debug')}
-          className={`flex-1 py-3 text-sm font-medium transition-colors ${
+          className={`flex-1 py-3 text-xs font-medium transition-colors ${
             activeTab === 'debug' 
               ? 'text-[#2962ff] border-b-2 border-[#2962ff]' 
               : 'text-[#787b86] hover:text-[#d1d4dc]'
@@ -81,6 +95,13 @@ export const Sidebar: React.FC = () => {
         ) : activeTab === 'signals' ? (
           <ErrorBoundary fallbackTitle="Signal Panel Error">
             <SignalPanel />
+          </ErrorBoundary>
+        ) : activeTab === 'strategy' ? (
+          <ErrorBoundary fallbackTitle="Strategy Panel Error">
+            <div className="h-full overflow-y-auto p-3 space-y-3">
+              <StrategySelector currentTimeframe={currentTimeframe} />
+              <StrategyConfigPanel />
+            </div>
           </ErrorBoundary>
         ) : (
           <ErrorBoundary fallbackTitle="Debug Panel Error">

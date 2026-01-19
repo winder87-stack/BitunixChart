@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useSignalStore } from '../../stores/signalStore';
-import type { QuadSignal } from '../../types/quadStochastic';
+import type { TradeSignal } from '../../types/signals';
 import { cn } from '../../lib/utils';
 
 interface SignalAlertProps {
-  signal: QuadSignal;
+  signal: TradeSignal;
   onDismiss: () => void;
   onAction?: () => void;
   index: number;
@@ -72,7 +72,7 @@ const SignalAlert: React.FC<SignalAlertProps> = ({ signal, onDismiss, onAction, 
 
 export const SignalAlertContainer: React.FC = () => {
   const { activeSignals, selectSignal, showSignalPanel, toggleSignalPanel } = useSignalStore();
-  const [alerts, setAlerts] = useState<QuadSignal[]>([]);
+  const [alerts, setAlerts] = useState<TradeSignal[]>([]);
   const lastProcessedRef = React.useRef<string | null>(null);
 
   // Monitor for new signals
@@ -93,7 +93,7 @@ export const SignalAlertContainer: React.FC = () => {
     setAlerts(prev => prev.filter(a => a.id !== id));
   };
 
-  const handleAction = (signal: QuadSignal) => {
+  const handleAction = (signal: TradeSignal) => {
     selectSignal(signal);
     if (!showSignalPanel) {
       toggleSignalPanel();

@@ -58,13 +58,14 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
   try {
     switch (type) {
       case 'CALCULATE_SIGNALS': {
-        const { symbol, klines, config } = payload as { 
+        const { symbol, klines, config, interval } = payload as { 
           symbol: string; 
           klines: ParsedKline[]; 
-          config: SignalConfig 
+          config: SignalConfig;
+          interval?: string;
         };
         
-        const result = calculateQuadStochSignals(symbol, klines, config);
+        const result = calculateQuadStochSignals(symbol, klines, config, interval);
         
         const duration = performance.now() - startTime;
         if (duration > 100) {
@@ -80,8 +81,8 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
       }
         
       case 'CALCULATE_STOCH_ONLY': {
-        const { klines } = payload as { klines: ParsedKline[] };
-        const stochData = calculateQuadStochastic(klines);
+        const { klines, interval } = payload as { klines: ParsedKline[]; interval?: string };
+        const stochData = calculateQuadStochastic(klines, interval);
         
         self.postMessage({ 
           type: 'STOCH_RESULT', 

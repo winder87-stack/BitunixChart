@@ -2,8 +2,8 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
 
+import type { TradeSignal } from '../types/signals';
 import type {
-  QuadSignal,
   SignalConfig,
   QuadStochasticData,
   SignalStrength,
@@ -20,15 +20,15 @@ import { soundManager } from '../utils/audio/soundManager';
 interface ScannerResult {
   symbol: string;
   timestamp: number;
-  signals: QuadSignal[];
+  signals: TradeSignal[];
   hasSignal: boolean;
   bestSignalStrength: SignalStrength | null;
 }
 
 interface SignalState {
   // Signals
-  signals: QuadSignal[];
-  signalHistory: QuadSignal[];
+  signals: TradeSignal[];
+  signalHistory: TradeSignal[];
   
   // Current calculation data
   currentSymbol: string | null;
@@ -49,7 +49,7 @@ interface SignalState {
   // UI state
   showSignalPanel: boolean;
   showQuadPane: boolean;
-  selectedSignal: QuadSignal | null;
+  selectedSignal: TradeSignal | null;
   
   // Settings
   soundEnabled: boolean;
@@ -58,8 +58,8 @@ interface SignalState {
 }
 
 interface SignalActions {
-  addSignal: (signal: QuadSignal) => void;
-  updateSignal: (id: string, updates: Partial<QuadSignal>) => void;
+  addSignal: (signal: TradeSignal) => void;
+  updateSignal: (id: string, updates: Partial<TradeSignal>) => void;
   removeSignal: (id: string) => void;
   
   updateSignalStatuses: (currentPrices: Record<string, number>) => void;
@@ -80,7 +80,7 @@ interface SignalActions {
   
   toggleSignalPanel: () => void;
   toggleQuadPane: () => void;
-  selectSignal: (signal: QuadSignal | null) => void;
+  selectSignal: (signal: TradeSignal | null) => void;
   
   toggleSound: () => void;
   toggleNotifications: () => void;
@@ -96,10 +96,10 @@ interface SignalActions {
 }
 
 interface SignalComputed {
-  activeSignals: () => QuadSignal[];
-  signalsBySymbol: (symbol: string) => QuadSignal[];
-  superSignals: () => QuadSignal[];
-  recentSignals: (minutes: number) => QuadSignal[];
+  activeSignals: () => TradeSignal[];
+  signalsBySymbol: (symbol: string) => TradeSignal[];
+  superSignals: () => TradeSignal[];
+  recentSignals: (minutes: number) => TradeSignal[];
 }
 
 export type SignalStore = SignalState & SignalActions & SignalComputed;
@@ -132,7 +132,7 @@ export const useSignalStore = create<SignalStore>()(
       autoTradeEnabled: false,
 
       // Actions
-      addSignal: (signal: QuadSignal) => {
+      addSignal: (signal: TradeSignal) => {
         set((draft) => {
           // Check for duplicates within 5 minutes
           const existingIdx = draft.signals.findIndex(s => 
@@ -170,7 +170,7 @@ export const useSignalStore = create<SignalStore>()(
         });
       },
 
-      updateSignal: (id: string, updates: Partial<QuadSignal>) => {
+      updateSignal: (id: string, updates: Partial<TradeSignal>) => {
         set((draft) => {
           const idx = draft.signals.findIndex(s => s.id === id);
           if (idx !== -1) {
@@ -212,7 +212,7 @@ export const useSignalStore = create<SignalStore>()(
             let statusChanged = false;
 
             // Check Stop Loss
-            if ((isLong && price <= signal.stopLoss) || (!isLong && price >= signal.stopLoss)) {
+            if ((isLong && price <= signal.stopLoss.initial) || (!isLong && price >= signal.stopLoss.initial)) {
               signal.status = 'STOPPED';
               signal.actualExit = price;
               signal.exitTime = now;
@@ -222,7 +222,7 @@ export const useSignalStore = create<SignalStore>()(
               statusChanged = true;
             }
             // Check Targets
-            else if ((isLong && price >= signal.target3) || (!isLong && price <= signal.target3)) {
+            else if ((isLong && price >= signal.targets[2].price) || (!isLong && price <= signal.targets[2].price)) {
               signal.status = 'TARGET3_HIT';
               signal.actualExit = price;
               signal.exitTime = now;
@@ -231,13 +231,13 @@ export const useSignalStore = create<SignalStore>()(
                 : ((signal.entryPrice - price) / signal.entryPrice) * 100;
               statusChanged = true;
             }
-            else if ((isLong && price >= signal.target2) || (!isLong && price <= signal.target2)) {
+            else if ((isLong && price >= signal.targets[1].price) || (!isLong && price <= signal.targets[1].price)) {
               if (signal.status !== 'PARTIAL') {
                 signal.status = 'TARGET2_HIT';
                 statusChanged = true;
               }
             }
-            else if ((isLong && price >= signal.target1) || (!isLong && price <= signal.target1)) {
+            else if ((isLong && price >= signal.targets[0].price) || (!isLong && price <= signal.targets[0].price)) {
               if (signal.status === 'ACTIVE') {
                 signal.status = 'TARGET1_HIT';
                 statusChanged = true;
@@ -301,7 +301,7 @@ export const useSignalStore = create<SignalStore>()(
         });
       },
 
-      selectSignal: (signal) => {
+      selectSignal: (signal: TradeSignal | null) => {
         set((draft) => {
           draft.selectedSignal = signal;
         });

@@ -10,10 +10,12 @@
 
 import React, { useRef, useState } from 'react';
 import { useChartStore, selectSymbolTimeframe, selectChartSettings, selectIsSubscribed } from '../../stores/chartStore';
+import { useStrategyStore } from '../../stores/strategyStore';
 import { useMarketData } from '../../hooks/useMarketData';
 import { SymbolSearch } from '../Sidebar/SymbolSearch';
 import { PriceDisplay } from './PriceDisplay';
 import { DrawingToolbar } from './DrawingToolbar';
+import { SettingsPanel } from '../settings/SettingsPanel';
 import { ErrorBoundary } from '../ErrorBoundary';
 import { cn } from '../../lib/utils';
 import type { Timeframe } from '../../types/bitunix';
@@ -80,6 +82,7 @@ const EXTRA_TIMEFRAMES: Timeframe[] = ['30m', '2h', '6h', '12h', '1M'];
 export const TopBar: React.FC = () => {
   // State
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   // Unused state for dropdown menu toggle, using CSS hover for now
   // const [isTimeframeMenuOpen, setIsTimeframeMenuOpen] = useState(false);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
@@ -89,6 +92,12 @@ export const TopBar: React.FC = () => {
   const { chartType } = useChartStore(selectChartSettings);
   const isSubscribed = useChartStore(selectIsSubscribed);
   const { setTimeframe, setChartType } = useChartStore();
+  const { applyTimeframeConfig } = useStrategyStore();
+  
+  const handleTimeframeChange = (newTimeframe: Timeframe) => {
+    setTimeframe(newTimeframe);
+    applyTimeframeConfig(newTimeframe);
+  };
   
   // Market data
   const { tickers } = useMarketData();
@@ -150,7 +159,7 @@ export const TopBar: React.FC = () => {
           {TIMEFRAMES.map(tf => (
             <button
               key={tf}
-              onClick={() => setTimeframe(tf)}
+              onClick={() => handleTimeframeChange(tf)}
               className={cn(
                 "px-2 py-1 text-xs font-medium rounded transition-colors",
                 timeframe === tf 
@@ -173,7 +182,7 @@ export const TopBar: React.FC = () => {
               {EXTRA_TIMEFRAMES.map(tf => (
                 <button
                   key={tf}
-                  onClick={() => setTimeframe(tf)}
+                  onClick={() => handleTimeframeChange(tf)}
                   className={cn(
                     "w-full text-left px-4 py-2 text-xs hover:bg-accent transition-colors",
                     timeframe === tf ? "text-primary" : "text-text-primary"
@@ -248,7 +257,11 @@ export const TopBar: React.FC = () => {
           <IndicatorsIcon />
         </button>
         
-        <button className="text-text-secondary hover:text-text-primary transition-colors" title="Settings">
+        <button 
+          onClick={() => setShowSettings(true)}
+          className="text-text-secondary hover:text-text-primary transition-colors" 
+          title="Settings"
+        >
           <SettingsIcon />
         </button>
         
@@ -265,6 +278,8 @@ export const TopBar: React.FC = () => {
           title={isSubscribed ? "Connected" : "Disconnected"}
         />
       </div>
+
+      <SettingsPanel isOpen={showSettings} onClose={() => setShowSettings(false)} />
     </div>
   );
 };

@@ -277,6 +277,14 @@ export function evaluateSignalOpportunity(
     entryTime: null,
     exitTime: null,
     notes: '',
+    confirmationScore: 0,
+    confirmationDetails: {
+      achieved: [],
+      missing: [],
+      score: 0,
+      maxScore: 0,
+      percentage: 0
+    },
   };
   
   return signal;

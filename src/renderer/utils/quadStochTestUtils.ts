@@ -5,7 +5,8 @@
  */
 
 import type { ParsedKline } from '../types/bitunix';
-import type { QuadSignal, DivergenceType } from '../types/quadStochastic';
+import type { DivergenceType } from '../types/quadStochastic';
+import type { TradeSignal } from '../types/signals';
 
 // =============================================================================
 // Mock Kline Generation
@@ -254,11 +255,10 @@ export interface SignalValidationResult {
 /**
  * Validate a QuadSignal for correctness and quality
  */
-export function validateSignal(signal: QuadSignal): SignalValidationResult {
+export function validateSignal(signal: TradeSignal): SignalValidationResult {
   const issues: string[] = [];
   const warnings: string[] = [];
 
-  // Required field checks
   if (!signal.id || signal.id.length === 0) {
     issues.push('Missing or empty ID');
   }
@@ -275,58 +275,57 @@ export function validateSignal(signal: QuadSignal): SignalValidationResult {
     issues.push(`Invalid signal type: ${signal.type}`);
   }
 
-  // Price level validation for LONG
+  const stopLoss = signal.stopLoss.initial;
+  const target1 = signal.targets[0]?.price ?? 0;
+  const target2 = signal.targets[1]?.price ?? 0;
+  const target3 = signal.targets[2]?.price ?? 0;
+
   if (signal.type === 'LONG') {
-    if (signal.stopLoss >= signal.entryPrice) {
+    if (stopLoss >= signal.entryPrice) {
       issues.push('Stop loss at or above entry for LONG signal');
     }
-    if (signal.target1 <= signal.entryPrice) {
+    if (target1 <= signal.entryPrice) {
       issues.push('Target1 at or below entry for LONG signal');
     }
-    if (signal.target2 <= signal.target1) {
+    if (target2 <= target1) {
       issues.push('Target2 at or below Target1 for LONG signal');
     }
-    if (signal.target3 <= signal.target2) {
+    if (target3 <= target2) {
       issues.push('Target3 at or below Target2 for LONG signal');
     }
   }
 
-  // Price level validation for SHORT
   if (signal.type === 'SHORT') {
-    if (signal.stopLoss <= signal.entryPrice) {
+    if (stopLoss <= signal.entryPrice) {
       issues.push('Stop loss at or below entry for SHORT signal');
     }
-    if (signal.target1 >= signal.entryPrice) {
+    if (target1 >= signal.entryPrice) {
       issues.push('Target1 at or above entry for SHORT signal');
     }
-    if (signal.target2 >= signal.target1) {
+    if (target2 >= target1) {
       issues.push('Target2 at or above Target1 for SHORT signal');
     }
-    if (signal.target3 >= signal.target2) {
+    if (target3 >= target2) {
       issues.push('Target3 at or above Target2 for SHORT signal');
     }
   }
 
-  // Risk/Reward validation
   if (signal.riskRewardRatio < 1) {
     issues.push(`Risk/Reward ratio below 1: ${signal.riskRewardRatio.toFixed(2)}`);
   } else if (signal.riskRewardRatio < 1.5) {
     warnings.push(`Low Risk/Reward ratio: ${signal.riskRewardRatio.toFixed(2)}`);
   }
 
-  // Position size validation
   if (signal.positionSize <= 0) {
     issues.push('Position size must be positive');
   } else if (signal.positionSize > 10) {
     warnings.push(`High position size: ${signal.positionSize}%`);
   }
 
-  // Confluence score validation
   if (signal.confluenceScore < 0) {
     issues.push('Confluence score cannot be negative');
   }
 
-  // Stochastic values validation
   const bands = ['fast', 'standard', 'medium', 'slow'] as const;
   for (const band of bands) {
     const state = signal.stochStates[band];
@@ -342,23 +341,20 @@ export function validateSignal(signal: QuadSignal): SignalValidationResult {
     }
   }
 
-  // Signal strength validation
   const validStrengths = ['WEAK', 'MODERATE', 'STRONG', 'SUPER'];
   if (!validStrengths.includes(signal.strength)) {
     issues.push(`Invalid signal strength: ${signal.strength}`);
   }
 
-  // Status validation
   const validStatuses = [
     'PENDING', 'ACTIVE', 'PARTIAL',
     'TARGET1_HIT', 'TARGET2_HIT', 'TARGET3_HIT',
-    'STOPPED', 'EXPIRED'
+    'STOPPED', 'EXPIRED', 'CANCELLED'
   ];
   if (!validStatuses.includes(signal.status)) {
     issues.push(`Invalid signal status: ${signal.status}`);
   }
 
-  // Divergence validation (if present)
   if (signal.divergence) {
     const validDivTypes: DivergenceType[] = ['BULLISH', 'BEARISH', 'HIDDEN_BULLISH', 'HIDDEN_BEARISH'];
     if (!validDivTypes.includes(signal.divergence.type)) {
@@ -382,11 +378,11 @@ export function validateSignal(signal: QuadSignal): SignalValidationResult {
 /**
  * Batch validate multiple signals
  */
-export function validateSignals(signals: QuadSignal[]): {
+export function validateSignals(signals: TradeSignal[]): {
   totalSignals: number;
   validSignals: number;
   invalidSignals: number;
-  results: Array<{ signal: QuadSignal; validation: SignalValidationResult }>;
+  results: Array<{ signal: TradeSignal; validation: SignalValidationResult }>;
 } {
   const results = signals.map(signal => ({
     signal,
@@ -544,7 +540,7 @@ export function formatPerformanceResult(result: PerformanceResult): string {
 /**
  * Create a mock signal for testing UI components
  */
-export function createMockSignal(overrides: Partial<QuadSignal> = {}): QuadSignal {
+export function createMockSignal(overrides: Partial<TradeSignal> = {}): TradeSignal {
   const now = Date.now();
   const entryPrice = 95000;
   const isLong = overrides.type !== 'SHORT';
@@ -556,10 +552,36 @@ export function createMockSignal(overrides: Partial<QuadSignal> = {}): QuadSigna
     type: isLong ? 'LONG' : 'SHORT',
     strength: 'MODERATE',
     entryPrice,
-    stopLoss: isLong ? entryPrice * 0.99 : entryPrice * 1.01,
-    target1: isLong ? entryPrice * 1.005 : entryPrice * 0.995,
-    target2: isLong ? entryPrice * 1.01 : entryPrice * 0.99,
-    target3: isLong ? entryPrice * 1.02 : entryPrice * 0.98,
+    action: isLong ? 'BUY' : 'SELL',
+    entryType: 'MARKET',
+    entryZone: {
+      ideal: entryPrice,
+      min: entryPrice * 0.998,
+      max: entryPrice * 1.002,
+    },
+    stopLoss: {
+      initial: isLong ? entryPrice * 0.99 : entryPrice * 1.01,
+      breakeven: entryPrice,
+      trailing: {
+        enabled: false,
+        method: 'ATR',
+        value: 1.5,
+      },
+    },
+    targets: [
+      { price: isLong ? entryPrice * 1.005 : entryPrice * 0.995, percentage: 40, reason: 'stoch_rotation' },
+      { price: isLong ? entryPrice * 1.01 : entryPrice * 0.99, percentage: 40, reason: 'ma_touch' },
+      { price: isLong ? entryPrice * 1.02 : entryPrice * 0.98, percentage: 20, reason: 'channel_bound' },
+    ],
+    validUntil: now + 30 * 60 * 1000,
+    maxHoldTime: 4 * 60 * 60 * 1000,
+    confirmations: {
+      required: ['stoch_oversold'],
+      optional: ['vwap_confluence', 'ma_support'],
+      achieved: ['stoch_oversold'],
+    },
+    candlesSinceSignal: 0,
+    avgCandleSize: 50,
     divergence: null,
     confluence: {
       quadRotation: false,
@@ -587,6 +609,14 @@ export function createMockSignal(overrides: Partial<QuadSignal> = {}): QuadSigna
     entryTime: null,
     exitTime: null,
     notes: 'Mock signal for testing',
+    confirmationScore: 0,
+    confirmationDetails: {
+      achieved: [],
+      missing: [],
+      score: 0,
+      maxScore: 0,
+      percentage: 0,
+    },
     ...overrides,
   };
 }

@@ -1,7 +1,7 @@
 import { Stochastic, SMA } from 'technicalindicators';
 import type { ParsedKline } from '../../types/bitunix';
 import {
-  STOCHASTIC_BANDS,
+  getStochasticBands,
   type StochasticBandKey,
   type StochasticValue,
   type QuadStochasticData,
@@ -98,8 +98,8 @@ export function calculateStochasticBand(
   return result;
 }
 
-export function calculateQuadStochastic(klines: ParsedKline[]): QuadStochasticData {
-  const { FAST, STANDARD, MEDIUM, SLOW } = STOCHASTIC_BANDS;
+export function calculateQuadStochastic(klines: ParsedKline[], interval: string = '1m'): QuadStochasticData {
+  const { FAST, STANDARD, MEDIUM, SLOW } = getStochasticBands(interval);
 
   return {
     fast: calculateStochasticBand(klines, FAST.kPeriod, FAST.dPeriod, FAST.smooth),
@@ -198,9 +198,10 @@ function analyzeBand(
 
 export function analyzeQuadStochastic(
   klines: ParsedKline[],
-  config: SignalConfig = DEFAULT_SIGNAL_CONFIG
+  config: SignalConfig = DEFAULT_SIGNAL_CONFIG,
+  interval: string = '1m'
 ): QuadStochasticAnalysis | null {
-  const data = calculateQuadStochastic(klines);
+  const data = calculateQuadStochastic(klines, interval);
   const snapshot = getLatestSnapshot(data);
 
   if (!snapshot) {
