@@ -1,162 +1,98 @@
-import React, { useEffect, useRef, useMemo } from 'react';
-import { createChart, IChartApi, LineStyle, ColorType } from 'lightweight-charts';
-import { useSignalStore } from '../../stores/signalStore';
+import { FC, useEffect, useRef, useMemo, useState } from 'react';
+import { createChart, IChartApi, ISeriesApi, LineStyle, ColorType, Time } from 'lightweight-charts';
+import { useStrategyStore } from '../../stores/strategyStore';
 import { cn } from '../../lib/utils';
-import type { StochasticValue, StochasticBandKey } from '../../types/quadStochastic';
+import type { StochasticValue } from '../../types/quadStochastic';
+import { getStrategy } from '../../strategies';
 
-interface QuadStochPaneProps {
+interface QuadStochasticPaneProps {
   mainChart: IChartApi | null;
   height?: number;
   className?: string;
 }
 
-const COLORS = {
-  FAST: '#2962ff',     // Blue - primary
-  STANDARD: '#00bcd4', // Cyan
-  MEDIUM: '#ff9800',   // Orange  
-  SLOW: '#e91e63',     // Pink - 5min proxy
+// Map indicator IDs to data keys
+const INDICATOR_KEY_MAP: Record<string, 'fast' | 'standard' | 'medium' | 'slow'> = {
+  'kqs-fast-stoch': 'fast',
+  'kqs-standard-stoch': 'standard',
+  'kqs-medium-stoch': 'medium',
+  'kqs-slow-stoch': 'slow',
 };
 
-export const QuadStochPane: React.FC<QuadStochPaneProps> = ({ 
+export const QuadStochPane: FC<QuadStochasticPaneProps> = ({ 
   mainChart, 
   height = 150, 
   className 
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const { quadData } = useSignalStore();
-
-  const seriesRef = useRef<{
-    fastK: any; fastD: any;
-    stdK: any; stdD: any;
-    medK: any; medD: any;
-    slowK: any; slowD: any;
-  } | null>(null);
+  const seriesRef = useRef<Map<string, ISeriesApi<'Line'>>>(new Map());
+  
+  const { activeStrategyId, activeIndicators, indicatorData, enabled } = useStrategyStore();
+  const strategy = activeStrategyId ? getStrategy(activeStrategyId) : null;
+  
+  // Real-time values for legend
+  const [currentValues, setCurrentValues] = useState<Record<string, number>>({});
 
   // Initialize chart
   useEffect(() => {
     if (!containerRef.current) return;
 
     const chart = createChart(containerRef.current, {
+      height,
       layout: {
-        background: { type: ColorType.Solid, color: 'transparent' },
-        textColor: '#d1d4dc',
+        background: { type: ColorType.Solid, color: '#131722' },
+        textColor: '#787b86',
       },
       grid: {
         vertLines: { color: '#1e222d' },
         horzLines: { color: '#1e222d' },
       },
-      width: containerRef.current.clientWidth,
-      height: height,
-      timeScale: {
-        visible: false, // Hide time scale (synced with main)
-        timeVisible: true,
-      },
       rightPriceScale: {
+        scaleMargins: { top: 0.1, bottom: 0.1 },
         borderColor: '#2a2e39',
-        scaleMargins: {
-          top: 0.1,
-          bottom: 0.1,
-        },
+      },
+      timeScale: {
+        visible: false, // Synced with main chart
+        borderColor: '#2a2e39',
       },
       crosshair: {
-        mode: 1, // CrosshairMode.Normal
+        mode: 1,
+        horzLine: { color: '#787b86', style: LineStyle.Dashed },
+        vertLine: { color: '#787b86', style: LineStyle.Dashed },
       },
     });
 
     chartRef.current = chart;
 
-    // Create Series
-    // FAST (Primary)
-    const fastK = chart.addLineSeries({
-      color: COLORS.FAST,
-      lineWidth: 2,
-      priceScaleId: 'right',
-      title: 'FAST %K',
-    });
-    const fastD = chart.addLineSeries({
-      color: COLORS.FAST,
-      lineWidth: 1,
-      lineStyle: LineStyle.Dashed,
-      priceScaleId: 'right',
-      title: 'FAST %D',
-    });
+    // Add zone lines
+    if (strategy?.zoneLines) {
+      const refSeries = chart.addLineSeries({
+        color: 'transparent',
+        lineWidth: 1, // Minimum visible width, essentially invisible with transparent color
+        priceLineVisible: false,
+        lastValueVisible: false,
+      });
 
-    // STANDARD
-    const stdK = chart.addLineSeries({
-      color: COLORS.STANDARD,
-      lineWidth: 1,
-      priceScaleId: 'right',
-      title: 'STD %K',
-    });
-    const stdD = chart.addLineSeries({
-      color: COLORS.STANDARD,
-      lineWidth: 1,
-      lineStyle: LineStyle.Dashed,
-      priceScaleId: 'right',
-      visible: false, // Hide D line for noise reduction
-    });
+      strategy.zoneLines.forEach(zone => {
+        refSeries.createPriceLine({
+          price: zone.value,
+          color: zone.color,
+          lineWidth: 1,
+          lineStyle: LineStyle.Dotted,
+          axisLabelVisible: true,
+          title: zone.label || '',
+        });
+      });
 
-    // MEDIUM
-    const medK = chart.addLineSeries({
-      color: COLORS.MEDIUM,
-      lineWidth: 1,
-      priceScaleId: 'right',
-      title: 'MED %K',
-    });
-    const medD = chart.addLineSeries({
-      color: COLORS.MEDIUM,
-      lineWidth: 1,
-      lineStyle: LineStyle.Dashed,
-      priceScaleId: 'right',
-      visible: false,
-    });
+      // Initialize scale with dummy data
+      refSeries.setData([
+        { time: (Math.floor(Date.now() / 1000) - 86400) as Time, value: 0 },
+        { time: Math.floor(Date.now() / 1000) as Time, value: 100 },
+      ]);
+    }
 
-    // SLOW
-    const slowK = chart.addLineSeries({
-      color: COLORS.SLOW,
-      lineWidth: 1,
-      priceScaleId: 'right',
-      title: 'SLOW %K',
-    });
-    const slowD = chart.addLineSeries({
-      color: COLORS.SLOW,
-      lineWidth: 1,
-      lineStyle: LineStyle.Dashed,
-      priceScaleId: 'right',
-      visible: false,
-    });
-
-    seriesRef.current = { fastK, fastD, stdK, stdD, medK, medD, slowK, slowD };
-
-    // Reference Lines (using createPriceLine on one of the series)
-    // We add them to fastK as an anchor
-    fastK.createPriceLine({
-      price: 80,
-      color: '#ef5350',
-      lineWidth: 1,
-      lineStyle: LineStyle.Dotted,
-      axisLabelVisible: false,
-      title: 'OB',
-    });
-    fastK.createPriceLine({
-      price: 50,
-      color: '#787b86',
-      lineWidth: 1,
-      lineStyle: LineStyle.Dotted,
-      axisLabelVisible: false,
-      title: 'Mid',
-    });
-    fastK.createPriceLine({
-      price: 20,
-      color: '#26a69a',
-      lineWidth: 1,
-      lineStyle: LineStyle.Dotted,
-      axisLabelVisible: false,
-      title: 'OS',
-    });
-
-    // Handle Resize
+    // Handle resize
     const handleResize = () => {
       if (containerRef.current && chartRef.current) {
         chartRef.current.applyOptions({
@@ -170,8 +106,10 @@ export const QuadStochPane: React.FC<QuadStochPaneProps> = ({
     return () => {
       window.removeEventListener('resize', handleResize);
       chart.remove();
+      chartRef.current = null;
+      seriesRef.current.clear();
     };
-  }, [height]);
+  }, [height, strategy]);
 
   // Sync with main chart
   useEffect(() => {
@@ -196,64 +134,101 @@ export const QuadStochPane: React.FC<QuadStochPaneProps> = ({
     };
   }, [mainChart]);
 
+  // Create/Update Series
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || !enabled || !activeIndicators) return;
+
+    // For now, clear all and recreate to ensure correct order/params
+    seriesRef.current.forEach(s => chart.removeSeries(s));
+    seriesRef.current.clear();
+
+    activeIndicators.forEach(indicator => {
+      const kSeries = chart.addLineSeries({
+        color: indicator.style.kLine?.color || '#2962ff',
+        lineWidth: (indicator.style.kLine?.width || 1) as any,
+        lineStyle: indicator.style.kLine?.dash ? LineStyle.Dashed : LineStyle.Solid,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: true,
+      });
+      seriesRef.current.set(`${indicator.id}-k`, kSeries);
+
+      // %D Line
+      const dSeries = chart.addLineSeries({
+        color: indicator.style.dLine?.color || indicator.style.kLine?.color || '#2962ff',
+        lineWidth: (indicator.style.dLine?.width || 1) as any,
+        lineStyle: LineStyle.Dashed,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      });
+      seriesRef.current.set(`${indicator.id}-d`, dSeries);
+    });
+
+  }, [enabled, activeIndicators]);
+
   // Update Data
   useEffect(() => {
-    if (!quadData || !seriesRef.current) return;
+    if (!indicatorData?.quadStochastic || !enabled || !activeIndicators) return;
 
-    const formatData = (data: StochasticValue[], key: 'k' | 'd') => {
-      return data
-        .filter(d => !isNaN(d[key]))
-        .map(d => ({ time: d.time, value: d[key] }));
-    };
+    const { fast, standard, medium, slow } = indicatorData.quadStochastic;
+    const dataMap = { fast, standard, medium, slow };
+    const nextValues: Record<string, number> = {};
 
-    seriesRef.current.fastK.setData(formatData(quadData.fast, 'k'));
-    seriesRef.current.fastD.setData(formatData(quadData.fast, 'd'));
-    
-    seriesRef.current.stdK.setData(formatData(quadData.standard, 'k'));
-    seriesRef.current.stdD.setData(formatData(quadData.standard, 'd'));
-    
-    seriesRef.current.medK.setData(formatData(quadData.medium, 'k'));
-    seriesRef.current.medD.setData(formatData(quadData.medium, 'd'));
-    
-    seriesRef.current.slowK.setData(formatData(quadData.slow, 'k'));
-    seriesRef.current.slowD.setData(formatData(quadData.slow, 'd'));
+    activeIndicators.forEach(indicator => {
+      const key = INDICATOR_KEY_MAP[indicator.id];
+      const data = dataMap[key];
+      if (!data) return;
 
-  }, [quadData]);
+      const kSeries = seriesRef.current.get(`${indicator.id}-k`);
+      const dSeries = seriesRef.current.get(`${indicator.id}-d`);
+
+      if (kSeries && data.length > 0) {
+        const kData = data.map((d: StochasticValue) => ({ time: d.time as Time, value: d.k }));
+        kSeries.setData(kData);
+        nextValues[key] = data[data.length - 1].k;
+      }
+
+      if (dSeries && data.length > 0) {
+        const dData = data.map((d: StochasticValue) => ({ time: d.time as Time, value: d.d }));
+        dSeries.setData(dData);
+      }
+    });
+
+    setCurrentValues(nextValues);
+  }, [indicatorData, activeIndicators, enabled]);
 
   // Legend Component
   const Legend = useMemo(() => {
-    if (!quadData) return null;
-    
-    // Get latest valid values
-    const getLatest = (band: StochasticValue[]) => {
-      for (let i = band.length - 1; i >= 0; i--) {
-        if (!isNaN(band[i].k)) return band[i];
-      }
-      return { k: 0, d: 0 };
+    if (!strategy || !enabled) return null;
+
+    const getColor = (val: number) => {
+      if (val >= 80) return '#ef5350';
+      if (val <= 20) return '#26a69a';
+      return '#d1d4dc';
     };
 
-    const fast = getLatest(quadData.fast);
-    const std = getLatest(quadData.standard);
-    const med = getLatest(quadData.medium);
-    const slow = getLatest(quadData.slow);
-
-    const bands: { label: string; value: number; color: string; key: StochasticBandKey }[] = [
-      { label: 'FAST', value: fast.k, color: COLORS.FAST, key: 'FAST' },
-      { label: 'STD', value: std.k, color: COLORS.STANDARD, key: 'STANDARD' },
-      { label: 'MED', value: med.k, color: COLORS.MEDIUM, key: 'MEDIUM' },
-      { label: 'SLOW', value: slow.k, color: COLORS.SLOW, key: 'SLOW' },
-    ];
-
     return (
-      <div className="absolute top-1 left-2 flex gap-3 text-xs font-mono bg-[#131722]/80 p-1 rounded z-10 pointer-events-none">
-        {bands.map(b => (
-          <div key={b.key} style={{ color: b.color }}>
-            {b.label}: {b.value.toFixed(1)}
-          </div>
-        ))}
+      <div className="absolute top-0 left-0 z-10 flex items-center gap-4 px-2 py-1 text-[10px] font-mono pointer-events-none bg-[#131722]/80 backdrop-blur-sm rounded-br">
+        <span className="text-[#f7931a] font-bold">⚡ KQS</span>
+        {activeIndicators.map(ind => {
+          const key = INDICATOR_KEY_MAP[ind.id];
+          const val = currentValues[key];
+          return (
+            <div key={ind.id} className="flex items-center gap-1">
+              <span style={{ color: ind.style.kLine?.color }}>{ind.shortName}:</span>
+              <span style={{ color: val !== undefined ? getColor(val) : '#787b86' }}>
+                {val !== undefined ? val.toFixed(1) : '--'}
+              </span>
+            </div>
+          );
+        })}
       </div>
     );
-  }, [quadData]);
+  }, [strategy, enabled, activeIndicators, currentValues]);
+
+  if (!enabled || !strategy) return null;
 
   return (
     <div className={cn("relative w-full border-t border-[#2a2e39]", className)} style={{ height }}>

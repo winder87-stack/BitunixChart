@@ -16,7 +16,7 @@ import { Input } from '../ui/input';
 import { getAllStrategies, getStrategy } from '../../strategies';
 import { useStrategyStore } from '../../stores/strategyStore';
 import { StrategySettings } from '../strategy/StrategySettings';
-import { Settings, ChevronDown, X } from 'lucide-react';
+import { Settings, ChevronDown, EyeOff } from 'lucide-react';
 
 // =============================================================================
 // Icons
@@ -105,13 +105,14 @@ export const IndicatorList: React.FC = () => {
   // Strategy state
   const [strategiesExpanded, setStrategiesExpanded] = useState(true);
   const [showStrategySettings, setShowStrategySettings] = useState(false);
-  const { activeStrategyId, setStrategy: setActiveStrategy, enabled, setEnabled: setStrategyEnabled } = useStrategyStore();
+  const { activeStrategyId, setStrategy: setActiveStrategy, enabled, setEnabled: setStrategyEnabled, activeIndicators } = useStrategyStore();
   const strategies = getAllStrategies();
   const activeStrategy = activeStrategyId ? getStrategy(activeStrategyId) : null;
+  const [activeExpanded, setActiveExpanded] = useState(true);
 
   const { 
-    activeIndicators, 
-    addIndicator, 
+    activeIndicators: manualIndicators, 
+    addIndicator,
     removeIndicator, 
     toggleIndicatorVisibility, 
     selectIndicator,
@@ -196,96 +197,92 @@ export const IndicatorList: React.FC = () => {
             className="flex items-center w-full gap-2 p-2 text-xs font-semibold text-text-secondary uppercase tracking-wider hover:text-text-primary transition-colors"
           >
             <ChevronRightIcon expanded={expandedCategories['active']} />
-            <span>Active ({activeIndicators.length + (enabled && activeStrategy ? 1 : 0)}/10)</span>
+            <span>Active ({(enabled && activeStrategy ? activeIndicators.length : 0) + manualIndicators.length}/10)</span>
           </button>
           
           {expandedCategories['active'] && (
             <div className="mt-1 space-y-1">
               {/* Show active strategy first */}
               {enabled && activeStrategy && (
-                <div className="flex items-center justify-between px-2 py-2 bg-surface rounded mb-1 group">
-                  <div className="flex items-center gap-2 overflow-hidden">
-                    <span 
-                      className="w-6 h-6 rounded flex items-center justify-center text-sm shrink-0"
-                      style={{ backgroundColor: `${activeStrategy.info.color}20`, color: activeStrategy.info.color }}
-                    >
-                      {activeStrategy.info.icon}
-                    </span>
-                    <span className="text-sm text-text-primary font-medium truncate">
-                      {activeStrategy.info.shortName || activeStrategy.info.name}
-                    </span>
-                    <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse shrink-0" />
+                <div className="flex flex-col bg-surface rounded mb-1 border-l-2" style={{ borderColor: activeStrategy.info.color }}>
+                  <div className="flex items-center justify-between px-2 py-2 group">
+                    <div className="flex items-center gap-2 overflow-hidden">
+                      <span className="text-lg shrink-0">
+                        {activeStrategy.info.icon}
+                      </span>
+                      <span className="text-sm text-text-primary font-medium truncate">
+                        {activeStrategy.info.shortName || activeStrategy.info.name}
+                      </span>
+                      <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse shrink-0" />
+                    </div>
+                    
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => setShowStrategySettings(true)}
+                        className="p-1.5 text-text-secondary hover:text-text-primary rounded hover:bg-border"
+                        title="Settings"
+                      >
+                        <Settings size={14} />
+                      </button>
+                      <button
+                        onClick={() => setStrategyEnabled(false)}
+                        className="p-1.5 text-text-secondary hover:text-text-primary rounded hover:bg-border"
+                        title="Disable Strategy"
+                      >
+                        <EyeOff size={14} />
+                      </button>
+                    </div>
                   </div>
-                  
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={() => setShowStrategySettings(true)}
-                      className="p-1.5 text-text-secondary hover:text-text-primary rounded hover:bg-border"
-                      title="Settings"
+
+                  {/* Strategy Indicators List */}
+                  {activeIndicators.map((ind, idx) => (
+                    <div 
+                      key={ind.id}
+                      className={cn(
+                        "flex items-center justify-between px-3 py-1.5 text-xs bg-background/50 hover:bg-background transition-colors",
+                        idx === activeIndicators.length - 1 && "rounded-b"
+                      )}
                     >
-                      <Settings size={14} />
-                    </button>
-                    <button
-                      onClick={() => setStrategyEnabled(false)}
-                      className="p-1.5 text-text-secondary hover:text-text-primary rounded hover:bg-border"
-                      title="Disable Strategy"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
+                      <div className="flex items-center gap-2">
+                        <div 
+                          className="w-2 h-2 rounded-full"
+                          style={{ backgroundColor: ind.style.kLine?.color || ind.style.color }}
+                        />
+                        <span className="text-text-secondary w-16 truncate">{ind.shortName}</span>
+                        {ind.isPrimary && (
+                          <span className="px-1 py-0.5 text-[9px] bg-accent/20 text-accent rounded uppercase font-bold tracking-wider">PRIMARY</span>
+                        )}
+                        {ind.isHTFProxy && (
+                          <span className="px-1 py-0.5 text-[9px] bg-[#e91e63]/20 text-[#e91e63] rounded uppercase font-bold tracking-wider">HTF</span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-text-secondary opacity-70 font-mono">
+                        ({ind.params.kPeriod},{ind.params.dPeriod},{ind.params.smooth})
+                      </span>
+                    </div>
+                  ))}
                 </div>
               )}
 
-              {activeIndicators.length === 0 && (!enabled || !activeStrategy) ? (
+              {manualIndicators.length === 0 && (!enabled || !activeStrategy) ? (
                 <div className="px-6 py-2 text-xs text-text-secondary italic">
                   No active indicators
                 </div>
               ) : (
-                activeIndicators.map((ind, index) => {
+                manualIndicators.map((ind, index) => {
                   const def = getIndicatorDefinition(ind.type);
                   return (
-                    <div 
+                    <div
                       key={ind.id}
-                      className="flex items-center justify-between p-2 rounded hover:bg-surface group transition-colors"
+                      className="flex items-center justify-between px-2 py-2 hover:bg-surface rounded group"
                     >
-                      <div className="flex items-center gap-2 overflow-hidden">
-                        <div 
-                          className="w-1 h-8 rounded-full shrink-0" 
-                          style={{ backgroundColor: ind.style.color }} 
-                        />
-                        <div className="flex flex-col overflow-hidden">
-                          <span className="text-sm text-text-primary truncate" title={def?.name}>{def?.name}</span>
-                          <span className="text-[10px] text-text-secondary truncate">
-                            {ind.type} {ind.params.period ? `(${ind.params.period})` : ''}
-                          </span>
-                        </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium text-text-primary">
+                          {def ? def.shortName : ind.type}
+                        </span>
                       </div>
                       
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <div className="flex flex-col mr-1">
-                          <button
-                            onClick={() => handleMove(index, 'up')}
-                            disabled={index === 0}
-                            className="p-0.5 text-text-secondary hover:text-text-primary disabled:opacity-30"
-                          >
-                            <MoveUpIcon />
-                          </button>
-                          <button
-                            onClick={() => handleMove(index, 'down')}
-                            disabled={index === activeIndicators.length - 1}
-                            className="p-0.5 text-text-secondary hover:text-text-primary disabled:opacity-30"
-                          >
-                            <MoveDownIcon />
-                          </button>
-                        </div>
-
-                        <button
-                          onClick={() => toggleIndicatorVisibility(ind.id)}
-                          className="p-1.5 text-text-secondary hover:text-text-primary rounded hover:bg-border"
-                          title={ind.visible ? "Hide" : "Show"}
-                        >
-                          <VisibleIcon visible={ind.visible} />
-                        </button>
                         <button
                           onClick={() => selectIndicator(ind.id)}
                           className="p-1.5 text-text-secondary hover:text-text-primary rounded hover:bg-border"

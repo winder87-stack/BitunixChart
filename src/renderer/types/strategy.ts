@@ -53,10 +53,29 @@ export interface StrategyConfig {
   };
 }
 
+export interface StrategyIndicator {
+  id: string;
+  name: string;
+  shortName: string;
+  type: string;
+  pane: string;           // 'main' for overlay, custom name for separate pane
+  params: Record<string, any>;
+  style: {
+    kLine?: { color: string; width: number; dash?: number[] };
+    dLine?: { color: string; width: number; dash?: number[] };
+    color?: string;
+    width?: number;
+  };
+  isPrimary?: boolean;
+  isHTFProxy?: boolean;
+}
+
 export interface Strategy {
   info: StrategyInfo;
   defaultConfig: StrategyConfig;
   timeframeConfigs: Record<string, Partial<StrategyConfig>>;
+  indicators: StrategyIndicator[];
+  zoneLines?: Array<{ value: number; color: string; dash?: number[]; label?: string }>;
   
   calculateSignals: (klines: Kline[], config: StrategyConfig) => TradeSignal[];
   getIndicatorData: (klines: Kline[], config: StrategyConfig) => any;

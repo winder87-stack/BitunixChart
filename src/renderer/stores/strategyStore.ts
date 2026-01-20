@@ -20,6 +20,8 @@ import {
 // Types
 // =============================================================================
 
+import { StrategyIndicator } from '../types/strategy';
+
 interface DailyStats {
   date: string; // YYYY-MM-DD
   signalsGenerated: number;
@@ -33,6 +35,8 @@ interface StrategyState {
   // Active strategy
   activeStrategyId: string;
   activeConfig: StrategyConfig;
+  activeIndicators: StrategyIndicator[];
+  indicatorData: any;
   enabled: boolean;
   
   // Stats
@@ -136,6 +140,8 @@ export const useStrategyStore = create<StrategyStore>()(
       // State
       activeStrategyId: DEFAULT_STRATEGY_ID,
       activeConfig: DEFAULT_STRATEGY.defaultConfig,
+      activeIndicators: DEFAULT_STRATEGY.indicators || [],
+      indicatorData: null,
       enabled: true,
       stats: {
         signalsGenerated: 0,
@@ -160,6 +166,8 @@ export const useStrategyStore = create<StrategyStore>()(
         set((draft) => {
           draft.activeStrategyId = strategyId;
           draft.activeConfig = strategy.defaultConfig;
+          draft.activeIndicators = strategy.indicators || [];
+          draft.indicatorData = null;
           draft.activePresetId = null;
           draft.lastSignals = {};
         });
@@ -193,6 +201,23 @@ export const useStrategyStore = create<StrategyStore>()(
         if (tfConfig) {
           set((draft) => {
             draft.activeConfig = mergeConfigs(strategy.defaultConfig, tfConfig);
+            
+            // Recalculate indicators with timeframe-specific params
+            if (strategy.indicators && tfConfig.indicators?.stochastic) {
+              draft.activeIndicators = strategy.indicators.map(ind => {
+                const stochasticParams = tfConfig.indicators?.stochastic;
+                if (!stochasticParams) return ind;
+                
+                // Extract base ID (e.g. "kqs-fast-stoch" -> "fast")
+                const key = ind.id.replace('kqs-', '').replace('-stoch', '');
+                const tfParams = stochasticParams[key];
+                
+                if (tfParams) {
+                  return { ...ind, params: { ...ind.params, ...tfParams } };
+                }
+                return ind;
+              });
+            }
           });
         }
       },
@@ -270,9 +295,11 @@ export const useStrategyStore = create<StrategyStore>()(
 
         try {
           const signals = strategy.calculateSignals(klines, state.activeConfig);
+          const data = strategy.getIndicatorData(klines, state.activeConfig);
           
           set((draft) => {
             draft.stats.lastCalculation = Date.now();
+            draft.indicatorData = data;
           });
 
           return signals;

@@ -397,10 +397,14 @@ export interface QuadSignal {
   /** Signal direction */
   type: SignalType;
   
-  /** Signal strength based on confluence count */
+  /**
+   * Signal strength based on confluence count.
+   */
   strength: SignalStrength;
   
-  // === Price Levels ===
+  /**
+   * Price Levels
+   */
   
   /** Recommended entry price */
   entryPrice: number;

@@ -1,6 +1,7 @@
 import { Strategy, StrategyConfig, StrategyInfo } from '../types/strategy';
 import { TradeSignal } from '../types/signals';
 import { ParsedKline as Kline } from '../types/bitunix';
+import { calculateQuadStochSignals, calculateQuadStochastic } from '../services/indicators/quadStochCalculator';
 
 // ============================================
 // KURISKO QUAD STOCHASTIC STRATEGY
@@ -30,6 +31,67 @@ export const KURISKO_STRATEGY_INFO: StrategyInfo = {
   color: '#f7931a',
   tags: ['stochastic', 'divergence', 'scalping', 'momentum', 'quad-rotation'],
 };
+
+// Indicator Definitions
+export const KURISKO_INDICATORS = [
+  {
+    id: 'kqs-fast-stoch',
+    name: 'Fast Stochastic (9,3,3)',
+    shortName: 'Fast %K',
+    type: 'stochastic',
+    pane: 'quad-stoch', // All 4 share same pane
+    params: { kPeriod: 9, dPeriod: 3, smooth: 3 },
+    style: {
+      kLine: { color: '#2962ff', width: 2 },      // Blue - PRIMARY
+      dLine: { color: '#2962ff', width: 1, dash: [4, 2] },
+    },
+    isPrimary: true, // Primary signal source
+  },
+  {
+    id: 'kqs-standard-stoch',
+    name: 'Standard Stochastic (14,3,3)',
+    shortName: 'Std %K',
+    type: 'stochastic',
+    pane: 'quad-stoch',
+    params: { kPeriod: 14, dPeriod: 3, smooth: 3 },
+    style: {
+      kLine: { color: '#00bcd4', width: 1.5 },    // Cyan
+      dLine: { color: '#00bcd4', width: 1, dash: [4, 2] },
+    },
+  },
+  {
+    id: 'kqs-medium-stoch',
+    name: 'Medium Stochastic (44,3,3)',
+    shortName: 'Med %K',
+    type: 'stochastic',
+    pane: 'quad-stoch',
+    params: { kPeriod: 44, dPeriod: 3, smooth: 3 },
+    style: {
+      kLine: { color: '#ff9800', width: 1.5 },    // Orange
+      dLine: { color: '#ff9800', width: 1, dash: [4, 2] },
+    },
+  },
+  {
+    id: 'kqs-slow-stoch',
+    name: 'Slow Stochastic (60,10) - 5M Proxy',
+    shortName: 'Slow %K',
+    type: 'stochastic',
+    pane: 'quad-stoch',
+    params: { kPeriod: 60, dPeriod: 10, smooth: 10 },
+    style: {
+      kLine: { color: '#e91e63', width: 1.5 },    // Pink
+      dLine: { color: '#e91e63', width: 1, dash: [4, 2] },
+    },
+    isHTFProxy: true, // Higher timeframe proxy
+  },
+];
+
+// Zone lines for the pane
+export const KURISKO_ZONE_LINES = [
+  { value: 80, color: '#ef5350', dash: [2, 2], label: 'Overbought' },
+  { value: 50, color: '#787b86', dash: [2, 2], label: 'Mid' },
+  { value: 20, color: '#26a69a', dash: [2, 2], label: 'Oversold' },
+];
 
 // Default configuration
 export const KURISKO_DEFAULT_CONFIG: StrategyConfig = {
@@ -171,13 +233,21 @@ export const KuriskoQuadStochStrategy: Strategy = {
   info: KURISKO_STRATEGY_INFO,
   defaultConfig: KURISKO_DEFAULT_CONFIG,
   timeframeConfigs: KURISKO_TIMEFRAME_CONFIGS,
+  indicators: KURISKO_INDICATORS,
+  zoneLines: KURISKO_ZONE_LINES,
   
-  calculateSignals(_klines: Kline[], _config: StrategyConfig): TradeSignal[] {
-    return [];
+  calculateSignals(klines: Kline[], config: StrategyConfig): TradeSignal[] {
+    const result = calculateQuadStochSignals('UNKNOWN', klines, config as any); 
+    return result.signals;
   },
   
-  getIndicatorData(_klines: Kline[], _config: StrategyConfig) {
-    return {}; 
+  getIndicatorData(klines: Kline[], _config: StrategyConfig) {
+    // Determine interval from klines if possible, or default to 1m
+    // Since klines don't carry interval info directly usually, we might need to rely on store context or just calc
+    // The calculator handles alignment.
+    return {
+      quadStochastic: calculateQuadStochastic(klines)
+    };
   },
   
   validateConfig(config: StrategyConfig) {
