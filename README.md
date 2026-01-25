@@ -131,6 +131,12 @@ The app connects to:
 
 SMA, EMA, RSI, MACD, Bollinger Bands, Stochastic, ATR, VWAP, Parabolic SAR, ADX, CCI, MFI, OBV, Williams %R, ROC, Stochastic RSI, TRIX, Ultimate Oscillator, Awesome Oscillator, Chaikin Money Flow, PSAR, Supertrend, Ichimoku Cloud, VWMA, HMA
 
+## AI Development Assistant
+
+This project includes comprehensive documentation for using AI coding assistants (clawbot):
+
+- 📖 **[Clawbot Use Cases](CLAWBOT_USE_CASES.md)** - Complete guide to all possible use cases for AI assistance with this project
+
 ## License
 
 MIT
